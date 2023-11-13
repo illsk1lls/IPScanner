@@ -18,7 +18,7 @@ GOTO :LOAD
 :LISTMACHINES
 SET/A DONE=0
 CLS&ECHO  ExternalIP  : !EXT!&ECHO  InternalIP  : !ISHOST!&ECHO  Hostname    : !HOST!
-ECHO.&ECHO   IP ADDRESS    -   REMOTE HOSTNAME&ECHO ===============================================================================
+ECHO.&ECHO     MAC ADDRESS     -   IP ADDRESS    -   REMOTE HOSTNAME&ECHO ===============================================================================
 FOR /f "usebackq tokens=1-3" %%a IN (`ARP -a`) DO (
 IF "%%a"=="Interface:" (
 SET THIS=%%b
@@ -76,7 +76,7 @@ IF !count! EQU 5 (SET/A count=0&CALL :PROGRESS "Sending Packets, Please Wait....
 )
 )
 )
-CLS&SET/A L=1&SET/A P=0
+SET/A L=1&SET/A P=0
 FOR /L %%i IN (1,1,8) DO (
 CALL :PROGRESS "Listening, Please Wait.........." 13
 >nul 2>&1 PING 127.0.0.1 -n 2
