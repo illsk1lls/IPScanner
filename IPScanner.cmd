@@ -12,13 +12,13 @@ CALL :GETHOSTINFO
 CALL :SCANSUBNETS
 CALL :LISTMACHINES
 ECHO.&ECHO Press any key to refresh, (X) to Exit
-SET "KEY="&FOR /f "delims=" %%K IN ('2^> nul XCOPY /L /W /I "%~f0" "%TEMP%"') DO IF NOT DEFINED KEY SET "KEY=%%K"
+SET "KEY="&FOR /f "delims=" %%# IN ('2^> nul XCOPY /L /W /I "%~f0" "%TEMP%"') DO IF NOT DEFINED KEY SET "KEY=%%#"
 IF /I "!KEY:~-1!"=="X" GOTO :EOF
 GOTO :LOAD
 :LISTMACHINES
 SET/A DONE=0
 CLS&ECHO  ExternalIP  : !EXT!&ECHO  InternalIP  : !ISHOST!&ECHO  Hostname    : !HOST!
-ECHO.&ECHO     MAC ADDRESS     -   IP ADDRESS    -   REMOTE HOSTNAME&ECHO ===============================================================================
+ECHO.&ECHO     MAC ADDRESS         IP ADDRESS        REMOTE HOSTNAME&ECHO ===============================================================================
 FOR /f "usebackq tokens=1-3" %%a IN (`ARP -a`) DO (
 IF "%%a"=="Interface:" (
 SET THIS=%%b
@@ -45,7 +45,12 @@ ECHO  !MAC!  -  !THIS!  -  !HOST! ^(This Device^)&ECHO  !MAC!  -  !IP!  -  !NAME
 EXIT /b
 :GETHOSTINFO
 FOR /f "usebackq" %%# IN (`hostname.exe`) DO (SET HOST=%%#)
+PING -n 1 "ifconfig.me" | findstr /r /c:"[0-9] *ms">nul
+IF NOT %errorlevel% == 0 (
+SET "EXT=No Internet Detected"
+) ELSE (
 FOR /f "usebackq" %%# IN (`curl -s ifconfig.me`) DO (SET EXT=%%#)
+)
 FOR /f "usebackq tokens=14" %%# IN (`ipconfig`) DO (IF NOT "%%#"==":" (
 SET HOSTIP=%%#
 FOR /f "delims=. tokens=1-4" %%a IN ("!HOSTIP!") DO SET/A HLAST=%%d
@@ -66,8 +71,8 @@ SET INTF=%%b
 FOR /f "delims=. tokens=1-4" %%a IN ("!INTF!") DO (
 SET "SCAN=%%a.%%b.%%c."
 SET/A L=1&SET/A P=0&SET/A count=1
-FOR /L %%i IN (1,1,254) DO (
-START /min "" ""CMD.exe /c PING -n 1 -w 200 !SCAN!%%i"">nul
+FOR /L %%# IN (1,1,254) DO (
+START /min "" ""CMD.exe /c PING -n 1 -w 200 !SCAN!%%#"">nul
 :: No floating point in CMD ;(
 SET/A count+=1&SET "MSSG=Sending Packets, Please Wait...."
 IF !count! EQU 2 (CALL :PROGRESS "!MSSG!" 1)
@@ -77,7 +82,7 @@ IF !count! EQU 5 (SET/A count=0&CALL :PROGRESS "!MSSG!" 1)
 )
 )
 SET/A L=1&SET/A P=0
-FOR /L %%i IN (1,1,8) DO (
+FOR /L %%# IN (1,1,8) DO (
 CALL :PROGRESS "Listening, Please Wait.........." 13
 >nul 2>&1 PING 127.0.0.1 -n 2
 )
