@@ -17,14 +17,14 @@ IF /I "!KEY:~-1!"=="X" GOTO :EOF
 GOTO :LOAD
 :LISTMACHINES
 SET/A DONE=0
-CLS&ECHO ExternalIP: !EXT!&ECHO InternalIP: !ISHOST!&ECHO Hostname  : !HOST!
-ECHO.&ECHO   IP ADDRESS    -   REMOTE HOSTNAME&ECHO ========================================================
+CLS&ECHO  ExternalIP  : !EXT!&ECHO  InternalIP  : !ISHOST!&ECHO  Hostname    : !HOST!
+ECHO.&ECHO   IP ADDRESS    -   REMOTE HOSTNAME&ECHO ===============================================================================
 FOR /f "usebackq tokens=1-3" %%a IN (`ARP -a`) DO (
 IF "%%a"=="Interface:" (
 SET THIS=%%b
 FOR /f "delims=. tokens=1-4" %%a IN ("!THIS!") DO SET/A MYLAST=%%d
 )
-SET IP=%%a&IF "%%c"=="dynamic" (
+SET IP=%%a&SET MAC=%%b&IF "%%c"=="dynamic" (
 CALL :GETCOMPUTERNAME !IP! NAME
 IF "!IP!"=="!NAME!" SET NAME=Unable to Resolve Remote HostName
 FOR /f "delims=. tokens=1-4" %%a IN ("!IP!") DO (
@@ -32,12 +32,12 @@ SET/A LAST=%%d
 IF "!LAST:~1,1!"=="" (SET "IP=%%a.%%b.%%c.!LAST!  ") ELSE (IF "!LAST:~2,1!"=="" SET "IP=%%a.%%b.%%c.!LAST! ")
 )
 IF !MYLAST! GTR !LAST! (
-ECHO  !IP!  -  !NAME!
+ECHO  !MAC!  -  !IP!  -  !NAME!
 ) ELSE (
 IF !DONE! GEQ 1 (
-ECHO  !IP!  -  !NAME!
+ECHO  !MAC!  -  !IP!  -  !NAME!
 ) ELSE (
-ECHO  !THIS!  -  !HOST! ^(This Device^)&ECHO  !IP!  -  !NAME!&SET/A DONE+=1
+ECHO  !MAC!  -  !THIS!  -  !HOST! ^(This Device^)&ECHO  !MAC!  -  !IP!  -  !NAME!&SET/A DONE+=1
 )
 )
 )
