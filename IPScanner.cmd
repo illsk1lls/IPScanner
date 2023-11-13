@@ -12,9 +12,7 @@ CALL :GETHOSTINFO
 CALL :SCANSUBNETS
 CALL :LISTMACHINES
 ECHO.&ECHO Press any key to refresh, (X) to Exit
-SET "KEY=" & FOR /f "delims=" %%K IN ('
-    2^> nul XCOPY /L /W /I "%~f0" "%TEMP%"
-') DO IF NOT DEFINED KEY SET "KEY=%%K"
+SET "KEY=" & FOR /f "delims=" %%K IN ('2^> nul XCOPY /L /W /I "%~f0" "%TEMP%"') DO IF NOT DEFINED KEY SET "KEY=%%K"
 IF /I "!KEY:~-1!"=="X" GOTO :EOF
 GOTO :LOAD
 :LISTMACHINES
