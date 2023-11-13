@@ -26,7 +26,7 @@ FOR /f "delims=. tokens=1-4" %%a IN ("!THIS!") DO SET/A MYLAST=%%d
 )
 SET IP=%%a&SET MAC=%%b&IF "%%c"=="dynamic" (
 CALL :GETCOMPUTERNAME !IP! NAME
-IF "!IP!"=="!NAME!" SET NAME=Unable to Resolve Remote HostName
+IF "!IP!"=="!NAME!" SET NAME=Unable to Resolve
 FOR /f "delims=. tokens=1-4" %%a IN ("!IP!") DO (
 SET/A LAST=%%d
 IF "!LAST:~1,1!"=="" (SET "IP=%%a.%%b.%%c.!LAST!  ") ELSE (IF "!LAST:~2,1!"=="" SET "IP=%%a.%%b.%%c.!LAST! ")
