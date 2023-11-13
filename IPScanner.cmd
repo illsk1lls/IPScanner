@@ -59,7 +59,7 @@ EXIT /b
 :SCANSUBNETS
 CLS&NETSH Interface IPV4 DELETE Neighbors>nul
 FOR /F %%a IN ('COPY/Z "%~dpf0" nul')DO FOR /F skip^=4 %%b IN ('ECHO;PROMPT;$H^|CMD')DO SET "BS=%%b"&SET "CR=%%a"
-SET "_spc=                    "&SET "_bar=####################"
+SET "EMPT=                    "&SET "FULL=####################"
 FOR /f "usebackq tokens=1,2" %%a IN (`ARP -a`) DO (
 IF "%%a"=="Interface:" (
 SET INTF=%%b
@@ -69,9 +69,9 @@ SET/A L=1&SET/A P=0&SET/A count=1
 FOR /L %%i IN (1,1,254) DO (
 START /min "" ""CMD.exe /c PING -n 1 -w 200 !SCAN!%%i"">nul
 :: No floating point in CMD ;(
-SET/A count+=1
-IF !count! EQU 2 (CALL :PROGRESS "Sending Packets, Please Wait...." 1)
-IF !count! EQU 5 (SET/A count=0&CALL :PROGRESS "Sending Packets, Please Wait...." 1)
+SET/A count+=1&SET "MSSG=Sending Packets, Please Wait...."
+IF !count! EQU 2 (CALL :PROGRESS "!MSSG!" 1)
+IF !count! EQU 5 (SET/A count=0&CALL :PROGRESS "!MSSG!" 1)
 )
 )
 )
@@ -85,5 +85,5 @@ EXIT /b
 :PROGRESS
 SET/A P+=%2
 IF %P% GEQ 5 SET/A L=(%P%/5)+1&IF %P% GEQ 100 SET/A P=100
-SET/P "=!CR!!BS!!CR![!_bar:~0,%L%!!BS!!_spc:~%L%!]%~1 [%%%P%] "<nul
+SET/P "=!CR!!BS!!CR![!FULL:~0,%L%!!BS!!EMPT:~%L%!]%~1 [%%%P%] "<nul
 EXIT /b
