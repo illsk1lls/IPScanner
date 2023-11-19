@@ -74,20 +74,20 @@ IF "%%a"=="Interface:" (
 SET INTF=%%b
 FOR /f "delims=. tokens=1-3" %%a IN ("!INTF!") DO (
 SET "SCAN=%%a.%%b.%%c."
-SET/A L=1&SET/A P=0&SET/A count=1
+SET/A L=1&SET/A P=0&SET/A count=1&SET "MSSG=Sending Packets, Please Wait...."
 FOR /L %%# IN (1,1,254) DO (
 START /min "" ""CMD.exe /c PING -n 1 -w 200 !SCAN!%%#"">nul
 :: No floating point in CMD ;(
-SET/A count+=1&SET "MSSG=Sending Packets, Please Wait...."
+SET/A count+=1
 IF !count! EQU 2 (CALL :PROGRESS "!MSSG!" 1)
 IF !count! EQU 5 (SET/A count=0&CALL :PROGRESS "!MSSG!" 1)
 )
 )
 )
 )
-SET/A L=1&SET/A P=0
+SET/A L=1&SET/A P=0&SET "MSSG=Listening, Please Wait.........."
 FOR /L %%# IN (1,1,8) DO (
-CALL :PROGRESS "Listening, Please Wait.........." 13
+CALL :PROGRESS "!MSSG!" 13
 >nul 2>&1 PING 127.0.0.1 -n 2
 )
 EXIT /b
