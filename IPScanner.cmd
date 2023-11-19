@@ -1,43 +1,52 @@
-@ECHO OFF&SETLOCAL ENABLEDELAYEDEXPANSION
-SET "TitleName=IP Scanner"
-TASKLIST /V /NH /FI "imagename eq cmd.exe"|FIND /I /C "!TitleName!">nul
-IF NOT !errorlevel!==1 (ECHO ERROR:&ECHO IP Scanner is already open) |MSG * & EXIT /b
-TITLE !TitleName!
+@ECHO OFF&SET "TitleName=IP Scanner"&SET "EMPT=                    "&SET "FULL=####################"
+TASKLIST /V /NH /FI "imagename eq cmd.exe"|FIND /I /C "%TitleName%">nul
+IF NOT %errorlevel%==1 (ECHO ERROR:&ECHO IP Scanner is already open) |MSG * & EXIT /b
+TITLE %TitleName%
 >nul 2>&1 reg add hkcu\software\classes\.IPscanner\shell\runas\command /f /ve /d "cmd /x /d /r set \"f0=%%2\"& call \"%%2\" %%3"& set _= %*
 >nul 2>&1 fltmc|| if "%f0%" neq "%~f0" (cd.>"%ProgramData%\runas.IPscanner" & start "%~n0" /high "%ProgramData%\runas.IPscanner" "%~f0" "%_:"=""%" & exit /b)
 >nul 2>&1 reg delete hkcu\software\classes\.IPscanner\ /f &>nul 2>&1 del %ProgramData%\runas.IPscanner /f /q
 >nul 2>&1 netsh advfirewall firewall set rule group=”Network Discovery” new enable=Yes
+FOR /F %%a IN ('COPY/Z "%~dpf0" nul')DO FOR /F skip^=4 %%b IN ('ECHO;PROMPT;$H^|CMD')DO SET "BS=%%b"&SET "CR=%%a"
 :LOAD
+SETLOCAL ENABLEDELAYEDEXPANSION
 CALL :GETHOSTINFO
 CALL :SCANSUBNETS
 CALL :LISTMACHINES
 ECHO.&ECHO Press any key to refresh, (X) to Exit
 SET "KEY="&FOR /f "delims=" %%# IN ('2^> nul XCOPY /L /W /I "%~f0" "%TEMP%"') DO IF NOT DEFINED KEY SET "KEY=%%#"
-IF /I "!KEY:~-1!"=="X" GOTO :EOF
+IF /I "!KEY:~-1!"=="X" ENDLOCAL&GOTO :EOF
 GOTO :LOAD
+:GETCOMPUTERNAME <IP Address> <Return Var>
+FOR /f "usebackq tokens=2" %%# IN (`PING -a %1 -n 1 -w 200`) DO (SET %2=%%#)&EXIT /b
+EXIT /b
+:PROGRESS <Message> <% Per Cycle>
+SET/A P+=%2
+IF %P% GEQ 5 SET/A L=(%P%/5)+1&IF %P% GEQ 100 SET/A P=100
+SET/P "=!CR!!BS!!CR![!FULL:~0,%L%!!BS!!EMPT:~%L%!]%~1 [%%%P%] "<nul
+EXIT /b
 :LISTMACHINES
-SET/A DONE=0
+SET/A SELF=0
 CLS&ECHO  ExternalIP  : !EXT!&ECHO  InternalIP  : !ISHOST!&ECHO  Hostname    : !HOST!
 ECHO.&ECHO     MAC ADDRESS         IP ADDRESS        REMOTE HOSTNAME&ECHO ===============================================================================
 FOR /f "usebackq tokens=1-3" %%a IN (`ARP -a`) DO (
 IF "%%a"=="Interface:" (
-SET THIS=%%b
-FOR /f "delims=. tokens=1-4" %%a IN ("!THIS!") DO SET/A MYLAST=%%d
+SET ME=%%b
+FOR /f "delims=. tokens=4" %%# IN ("!ME!") DO SET/A MYLAST=%%#
 )
 SET IP=%%a&SET MAC=%%b&IF "%%c"=="dynamic" (
 CALL :GETCOMPUTERNAME !IP! NAME
 IF "!IP!"=="!NAME!" SET NAME=Unable to Resolve
-FOR /f "delims=. tokens=1-4" %%a IN ("!IP!") DO (
-SET/A LAST=%%d
-IF "!LAST:~1,1!"=="" (SET "IP=%%a.%%b.%%c.!LAST!  ") ELSE (IF "!LAST:~2,1!"=="" SET "IP=%%a.%%b.%%c.!LAST! ")
+FOR /f "delims=. tokens=4" %%# IN ("!IP!") DO (
+SET/A LAST=%%#
+IF "!LAST:~1,1!"=="" (SET "IP=!IP!  ") ELSE (IF "!LAST:~2,1!"=="" SET "IP=!IP! ")
 )
 IF !MYLAST! GTR !LAST! (
 ECHO  !MAC!  -  !IP!  -  !NAME!
 ) ELSE (
-IF !DONE! GEQ 1 (
+IF !SELF! GEQ 1 (
 ECHO  !MAC!  -  !IP!  -  !NAME!
 ) ELSE (
-ECHO  !MAC!  -  !THIS!  -  !HOST! ^(This Device^)&ECHO  !MAC!  -  !IP!  -  !NAME!&SET/A DONE+=1
+ECHO  !MAC!  -  !ME!  -  !HOST! ^(This Device^)&ECHO  !MAC!  -  !IP!  -  !NAME!&SET/A SELF+=1
 )
 )
 )
@@ -46,29 +55,24 @@ EXIT /b
 :GETHOSTINFO
 FOR /f "usebackq" %%# IN (`hostname.exe`) DO (SET HOST=%%#)
 PING -n 1 "ifconfig.me" | findstr /r /c:"[0-9] *ms">nul
-IF NOT %errorlevel% == 0 (
+IF NOT !errorlevel! == 0 (
 SET "EXT=No Internet Detected"
 ) ELSE (
 FOR /f "usebackq" %%# IN (`curl -s ifconfig.me`) DO (SET EXT=%%#)
 )
 FOR /f "usebackq tokens=14" %%# IN (`ipconfig`) DO (IF NOT "%%#"==":" (
 SET HOSTIP=%%#
-FOR /f "delims=. tokens=1-4" %%a IN ("!HOSTIP!") DO SET/A HLAST=%%d
+FOR /f "delims=. tokens=4" %%# IN ("!HOSTIP!") DO SET/A HLAST=%%#
 IF !HLAST! GEQ 2 SET ISHOST=!HOSTIP!
 )
 )
 EXIT/b
-:GETCOMPUTERNAME
-FOR /f "usebackq tokens=2" %%a IN (`PING -a %1 -n 1 -w 200`) DO (SET %2=%%a)&EXIT /b
-EXIT /b
 :SCANSUBNETS
 CLS&NETSH Interface IPV4 DELETE Neighbors>nul
-FOR /F %%a IN ('COPY/Z "%~dpf0" nul')DO FOR /F skip^=4 %%b IN ('ECHO;PROMPT;$H^|CMD')DO SET "BS=%%b"&SET "CR=%%a"
-SET "EMPT=                    "&SET "FULL=####################"
 FOR /f "usebackq tokens=1,2" %%a IN (`ARP -a`) DO (
 IF "%%a"=="Interface:" (
 SET INTF=%%b
-FOR /f "delims=. tokens=1-4" %%a IN ("!INTF!") DO (
+FOR /f "delims=. tokens=1-3" %%a IN ("!INTF!") DO (
 SET "SCAN=%%a.%%b.%%c."
 SET/A L=1&SET/A P=0&SET/A count=1
 FOR /L %%# IN (1,1,254) DO (
@@ -86,9 +90,4 @@ FOR /L %%# IN (1,1,8) DO (
 CALL :PROGRESS "Listening, Please Wait.........." 13
 >nul 2>&1 PING 127.0.0.1 -n 2
 )
-EXIT /b
-:PROGRESS
-SET/A P+=%2
-IF %P% GEQ 5 SET/A L=(%P%/5)+1&IF %P% GEQ 100 SET/A P=100
-SET/P "=!CR!!BS!!CR![!FULL:~0,%L%!!BS!!EMPT:~%L%!]%~1 [%%%P%] "<nul
 EXIT /b
