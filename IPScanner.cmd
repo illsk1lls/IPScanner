@@ -40,13 +40,14 @@ FOR /f "delims=. tokens=4" %%# IN ("!IP!") DO (
 SET/A LAST=%%#
 IF "!LAST:~1,1!"=="" (SET "IP=!IP!  ") ELSE (IF "!LAST:~2,1!"=="" SET "IP=!IP! ")
 )
+SET "_=  -  "
 IF !MYLAST! GTR !LAST! (
-ECHO  !MAC!  -  !IP!  -  !NAME!
+ECHO  !MAC!!_!!IP!!_!!NAME!
 ) ELSE (
 IF !SELF! GEQ 1 (
-ECHO  !MAC!  -  !IP!  -  !NAME!
+ECHO  !MAC!!_!!IP!!_!!NAME!
 ) ELSE (
-ECHO  !MAC!  -  !ME!  -  !HOST! ^(This Device^)&ECHO  !MAC!  -  !IP!  -  !NAME!&SET/A SELF+=1
+ECHO  !MAC!!_!!ME!!_!!HOST! ^(This Device^)&ECHO  !MAC!!_!!IP!!_!!NAME!&SET/A SELF+=1
 )
 )
 )
