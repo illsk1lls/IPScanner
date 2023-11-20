@@ -1,23 +1,23 @@
-@ECHO OFF&SET "TitleName=IP Scanner"&SET "EMPT=                    "&SET "FULL=####################"
+@ECHO OFF&SETLOCAL ENABLEDELAYEDEXPANSION&SET "TitleName=IP Scanner"
 TASKLIST /V /NH /FI "imagename eq cmd.exe"|FIND /I /C "%TitleName%">nul
-IF NOT %errorlevel%==1 (ECHO ERROR:&ECHO IP Scanner is already open) |MSG * & EXIT /b
+IF NOT !errorlevel!==1 (ECHO ERROR:&ECHO IP Scanner is already open) |MSG * & EXIT /b
 TITLE %TitleName%
 >nul 2>&1 reg add hkcu\software\classes\.IPscanner\shell\runas\command /f /ve /d "cmd /x /d /r set \"f0=%%2\"& call \"%%2\" %%3"& set _= %*
 >nul 2>&1 fltmc|| if "%f0%" neq "%~f0" (cd.>"%ProgramData%\runas.IPscanner" & start "%~n0" /high "%ProgramData%\runas.IPscanner" "%~f0" "%_:"=""%" & exit /b)
 >nul 2>&1 reg delete hkcu\software\classes\.IPscanner\ /f &>nul 2>&1 del %ProgramData%\runas.IPscanner /f /q
 >nul 2>&1 netsh advfirewall firewall set rule group=”Network Discovery” new enable=Yes
+SET "EMPT= "&SET "FULL=#"&FOR /L %%# IN (1,1,20) DO (SET "EMPT=!EMPT! "&SET "FULL=!FULL!#")
 FOR /F %%a IN ('COPY/Z "%~dpf0" nul')DO FOR /F skip^=4 %%b IN ('ECHO;PROMPT;$H^|CMD')DO SET "BS=%%b"&SET "CR=%%a"
 :LOAD
-SETLOCAL ENABLEDELAYEDEXPANSION
 CALL :GETHOSTINFO
 CALL :SCANSUBNETS
 CALL :LISTMACHINES
 ECHO.&ECHO Press any key to refresh, (X) to Exit
-SET "KEY="&FOR /f "delims=" %%# IN ('2^> nul XCOPY /L /W /I "%~f0" "%TEMP%"') DO IF NOT DEFINED KEY SET "KEY=%%#"
+SET "KEY="&FOR /f "delims=" %%# IN ('2^> nul XCOPY /L /W /I "%~f0" "%~f0"') DO IF NOT DEFINED KEY SET "KEY=%%#"
 IF /I "!KEY:~-1!"=="X" ENDLOCAL&GOTO :EOF
 GOTO :LOAD
 :GETCOMPUTERNAME <IP Address> <Return Var>
-FOR /f "usebackq tokens=2" %%# IN (`PING -a %1 -n 1 -w 200`) DO (SET %2=%%#)&EXIT /b
+FOR /f "usebackq tokens=2" %%# IN (`PING -a %1 -n 1`) DO (SET %2=%%#)&EXIT /b
 EXIT /b
 :PROGRESS <Message> <% Per Cycle>
 SET/A P+=%2
@@ -74,13 +74,13 @@ IF "%%a"=="Interface:" (
 SET INTF=%%b
 FOR /f "delims=. tokens=1-3" %%a IN ("!INTF!") DO (
 SET "SCAN=%%a.%%b.%%c."
-SET/A L=1&SET/A P=0&SET/A count=1&SET "MSSG=Sending Packets, Please Wait...."
+SET/A L=1&SET/A P=0&SET/A X=1&SET "MSSG=Sending Packets, Please Wait...."
 FOR /L %%# IN (1,1,254) DO (
 START /min "" ""CMD.exe /c PING -n 1 -w 200 !SCAN!%%#"">nul
 :: No floating point in CMD ;(
-SET/A count+=1
-IF !count! EQU 2 (CALL :PROGRESS "!MSSG!" 1)
-IF !count! EQU 5 (SET/A count=0&CALL :PROGRESS "!MSSG!" 1)
+SET/A X+=1
+IF !X! EQU 2 (CALL :PROGRESS "!MSSG!" 1)
+IF !X! EQU 5 (SET/A X=0&CALL :PROGRESS "!MSSG!" 1)
 )
 )
 )
