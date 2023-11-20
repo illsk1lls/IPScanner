@@ -12,8 +12,8 @@ FOR /F %%a IN ('COPY/Z "%~dpf0" nul')DO FOR /F skip^=4 %%b IN ('ECHO;PROMPT;$H^|
 CALL :GETHOSTINFO
 CALL :SCANSUBNETS
 CALL :LISTMACHINES
-ECHO.&ECHO Press any key to refresh, (X) to Exit
-SET "KEY="&FOR /f "delims=" %%# IN ('2^> nul XCOPY /L /W /I "%~f0" "%~f0"') DO IF NOT DEFINED KEY SET "KEY=%%#"
+SET "KEY="&ECHO.&ECHO Press any key to refresh, (X) to Exit
+FOR /f "delims=" %%# IN ('2^> nul XCOPY /L /W /I "%~f0" "%~f0"') DO IF NOT DEFINED KEY SET "KEY=%%#"
 IF /I "!KEY:~-1!"=="X" ENDLOCAL&GOTO :EOF
 GOTO :LOAD
 :GETCOMPUTERNAME <IP Address> <Return Var>
