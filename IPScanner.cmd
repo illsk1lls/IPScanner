@@ -6,7 +6,7 @@ TITLE %TitleName%
 >nul 2>&1 fltmc|| if "%f0%" neq "%~f0" (cd.>"%ProgramData%\runas.IPscanner" & start "%~n0" /high "%ProgramData%\runas.IPscanner" "%~f0" "%_:"=""%" & exit /b)
 >nul 2>&1 reg delete hkcu\software\classes\.IPscanner\ /f &>nul 2>&1 del %ProgramData%\runas.IPscanner /f /q
 >nul 2>&1 netsh advfirewall firewall set rule group=”Network Discovery” new enable=Yes
-SET "EMPT= "&SET "FULL=#"&FOR /L %%# IN (1,1,20) DO (SET "EMPT=!EMPT! "&SET "FULL=!FULL!#")
+FOR /L %%# IN (1,1,20) DO (SET "EMPT=!EMPT! "&SET "FULL=!FULL!%%")
 FOR /F %%a IN ('COPY/Z "%~dpf0" nul')DO FOR /F skip^=4 %%b IN ('ECHO;PROMPT;$H^|CMD')DO SET "BS=%%b"&SET "CR=%%a"
 :LOAD
 CALL :GETHOSTINFO
