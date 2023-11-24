@@ -26,7 +26,7 @@ SET/P "=!CR!!BS!!CR![!FULL:~0,%L%!!BS!!EMPT:~%L%!]%~1 [%%%P%] "<nul
 EXIT /b
 :LISTMACHINES
 SET/A SELF=0
-CLS&ECHO  External IP      : !EXT!&ECHO  Internal IP      : !ISHOST!&ECHO  Subnet Mask      : !SUBNET!&ECHO  Default Gateway  : !GATEWAY!&ECHO  Domain/Workgroup : !DOMAIN!&ECHO  Hostname         : !HOST!
+CLS&ECHO  Adapter Name     : !ADAPTER!&ECHO  External IP      : !EXT!&ECHO  Internal IP      : !ISHOST!&ECHO  Subnet Mask      : !SUBNET!&ECHO  Default Gateway  : !GATEWAY!&ECHO  Domain/Workgroup : !DOMAIN!&ECHO  Hostname         : !HOST!
 ECHO.&ECHO     MAC ADDRESS         IP ADDRESS        REMOTE HOSTNAME&ECHO ===============================================================================
 FOR /f "usebackq tokens=1-3" %%a IN (`ARP -a`) DO (
 IF "%%a"=="Interface:" (
@@ -67,9 +67,9 @@ FOR /f "delims=. tokens=4" %%# IN ("!HOSTIP!") DO SET/A HLAST=%%#
 IF !HLAST! GEQ 2 SET ISHOST=!HOSTIP!
 CALL :GETIP CHECKHOST
 IF "!ISHOST!"=="!CHECKHOST!" (
-CALL :GETSUBNET SUBNET&CALL :GETGATEWAY GATEWAY&CALL :GETDOMAIN DOMAIN
+CALL :GETADAPTER ADAPTER&CALL :GETSUBNET SUBNET&CALL :GETGATEWAY GATEWAY&CALL :GETDOMAIN DOMAIN
 ) ELSE (
-IF NOT DEFINED ISHOST SET "ISHOST=Unknown"&IF NOT DEFINED SUBNET SET "SUBNET=Unknown"&IF NOT DEFINED GATEWAY SET "GATEWAY=Unknown"&IF NOT DEFINED DOMAIN SET "DOMAIN=Unknown"
+IF NOT DEFINED ISHOST SET "ISHOST=Unknown"&IF NOT DEFINED ADAPTER SET "ADAPTER=Unknown"&IF NOT DEFINED SUBNET SET "SUBNET=Unknown"&IF NOT DEFINED GATEWAY SET "GATEWAY=Unknown"&IF NOT DEFINED DOMAIN SET "DOMAIN=Unknown"
 )
 )
 )
@@ -85,6 +85,9 @@ FOR /f "tokens=2 delims={,}" %%# IN ('"WMIC NICConfig where IPEnabled="True" get
 EXIT /b
 :GETDOMAIN
 FOR /f "usebackq skip=1 tokens=*" %%# in (`WMIC ComputerSystem Get Workgroup ^| Findstr /r /v "^$"`) DO SET %1=%%~#&EXIT /b
+EXIT /b
+:GETADAPTER
+FOR /f "usebackq skip=1 tokens=2*" %%a in (`"WMIC NICConfig Where IPEnabled="True" Get Caption"`) DO SET "%1=%%~a%%~b"&EXIT /b
 EXIT /b
 :SCANSUBNETS
 CLS&NETSH Interface IPV4 DELETE Neighbors>nul
