@@ -1,18 +1,19 @@
-@ECHO OFF&SETLOCAL ENABLEDELAYEDEXPANSION&SET "TitleName=IP Scanner"
+@ECHO OFF&SET "TitleName=IP Scanner"
 TASKLIST /V /NH /FI "imagename eq cmd.exe"|FIND /I /C "%TitleName%">nul
-IF NOT !errorlevel!==1 (ECHO ERROR:&ECHO IP Scanner is already open) |MSG * & EXIT /b
+IF NOT %errorlevel%==1 POWERSHELL -nop -c "$^={$Notify=[PowerShell]::Create().AddScript({$Audio=New-Object System.Media.SoundPlayer;$Audio.SoundLocation=$env:WinDir + '\Media\Windows Notify System Generic.wav';$Audio.playsync()});$rs=[RunspaceFactory]::CreateRunspace();$rs.ApartmentState="^""STA"^"";$rs.ThreadOptions="^""ReuseThread"^"";$rs.Open();$Notify.Runspace=$rs;$Notify.BeginInvoke()};&$^;$PopUp=New-Object -ComObject Wscript.Shell;$PopUp.Popup("^""IP Scanner is already open!"^"",0,'ERROR:',0x10)">nul&EXIT
 TITLE %TitleName%
 >nul 2>&1 reg add hkcu\software\classes\.IPscanner\shell\runas\command /f /ve /d "cmd /x /d /r set \"f0=%%2\"& call \"%%2\" %%3"& set _= %*
 >nul 2>&1 fltmc|| if "%f0%" neq "%~f0" (cd.>"%ProgramData%\runas.IPscanner" & start "%~n0" /high "%ProgramData%\runas.IPscanner" "%~f0" "%_:"=""%" & exit /b)
 >nul 2>&1 reg delete hkcu\software\classes\.IPscanner\ /f &>nul 2>&1 del %ProgramData%\runas.IPscanner /f /q
 >nul 2>&1 netsh advfirewall firewall set rule group=”Network Discovery” new enable=Yes
+SETLOCAL ENABLEDELAYEDEXPANSION
 FOR /L %%# IN (1,1,20) DO (SET "EMPT=!EMPT! "&SET "FULL=!FULL!%%")
 FOR /F %%# IN ('COPY/Z "%~dpf0" nul')DO FOR /F "skip=4" %%$ IN ('ECHO;PROMPT;$H^|CMD')DO SET "BS=%%$"&SET "CR=%%#"
 :LOAD
 CALL :GETHOSTINFO
 CALL :SCANSUBNETS
 CALL :LISTMACHINES
-SET "KEY="&ECHO.&ECHO Press any key to refresh, (X) to Exit
+SET "KEY="&ECHO/&ECHO Press any key to refresh, (X) to Exit
 FOR /f "delims=" %%# IN ('2^> nul XCOPY /L /W /I "%~f0" "%~f0"') DO IF NOT DEFINED KEY SET "KEY=%%#"
 IF /I "!KEY:~-1!"=="X" ENDLOCAL&GOTO :EOF
 GOTO :LOAD
@@ -27,7 +28,7 @@ EXIT /b
 :LISTMACHINES
 SET/A SELF=0
 CLS&ECHO  Adapter Name     : !ADAPTER!&ECHO  External IP      : !EXT!&ECHO  Internal IP      : !ISHOST!&ECHO  Subnet Mask      : !SUBNET!&ECHO  Default Gateway  : !GATEWAY!&ECHO  Domain/Workgroup : !DOMAIN!&ECHO  Hostname         : !HOST!
-ECHO.&ECHO     MAC ADDRESS         IP ADDRESS        REMOTE HOSTNAME&ECHO ===============================================================================
+ECHO/&ECHO     MAC ADDRESS         IP ADDRESS        REMOTE HOSTNAME&ECHO ===============================================================================
 FOR /f "usebackq tokens=1-3" %%a IN (`ARP -a`) DO (
 IF "%%a"=="Interface:" (
 SET ME=%%b
