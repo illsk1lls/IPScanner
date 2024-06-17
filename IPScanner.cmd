@@ -87,7 +87,7 @@ EXIT /b
 CLS&NETSH Interface IPV4 DELETE Neighbors>nul
 FOR /f "usebackq tokens=1,2" %%# IN (`ARP -a`) DO (
 IF "%%#"=="Interface:" (
-SET INTF=%%$"
+SET "INTF=%%$"
 FOR /f "delims=. tokens=1-3" %%a IN ("!INTF!") DO (
 SET "SCAN=%%a.%%b.%%c."
 SET/A L=1&SET/A P=0&SET/A X=1&SET "MSSG=Sending Packets, Please Wait...."
