@@ -1,4 +1,4 @@
-# IPScanner - A CMD Network Scanner
+# IPScanner - A Powershell Network Scanner
 
 For use with simple networks to get an up to date list of IP addresses and hostnames.<br>
 
