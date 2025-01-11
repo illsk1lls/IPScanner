@@ -7,7 +7,7 @@ if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
 # Allow Single Instance Only
 $AppId = 'IPScanner'
 $singleInstance = $false
-$script:SingleInstanceEvent = New-Object Threading.EventWaitHandle $true,([Threading.EventResetMode]::ManualReset),"Global\IPScanner",([ref] $singleInstance)
+$script:SingleInstanceEvent = New-Object Threading.EventWaitHandle $true,([Threading.EventResetMode]::ManualReset),"Global\$AppId",([ref] $singleInstance)
 if (-not $singleInstance){
 	$shell = New-Object -ComObject Wscript.Shell
 	$shell.Popup("IPScanner is already running!",0,'ERROR:',0x0) | Out-Null
@@ -20,13 +20,15 @@ function Get-HostInfo {
 	$global:hostName = hostName
 
 	# Check Internet Connection and Get External IP
-	$pingTest = Test-Connection -ComputerName "ifconfig.me" -Count 1 -Quiet
-	$global:externalIP = if ($pingTest) { 
-		(Invoke-WebRequest -Uri "http://ifconfig.me/ip" -UseBasicParsing).Content.Trim() 
+	$ProgressPreference='SilentlyContinue'
+	$hotspotRedirectionTest = irm "http://www.msftncsi.com/ncsi.txt"
+	$global:externalIP = if ($hotspotRedirectionTest -eq "Microsoft NCSI") { 
+		irm "http://ifconfig.me/ip"
 	} else { 
-		"No Internet Detected" 
+		"No Internet or Redirection"
 	}
-
+	$ProgressPreference='Continue'
+	
 	# Find Gateway
 	$global:gateway = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1).NextHop
 	$gatewayParts = $gateway -split '\.'
@@ -75,8 +77,8 @@ function Scan-Subnets {
 }
 
 function List-Machines {
-	Write-Host ""
-	Write-Host "MAC ADDRESS          IP ADDRESS         REMOTE HOSTNAME"
+	$DisplayA = ("{0,-20} {1,-18} {2}" -f 'MAC ADDRESS', 'IP ADDRESS', 'REMOTE HOSTNAME')
+	Write-Host; Write-Host $DisplayA
 	Write-Host "==============================================================================="
 
 	# Filter for Reachable or Stale states and select only IP and MAC address
@@ -93,15 +95,18 @@ function List-Machines {
 			"Unable to Resolve"
 		}
 		# Format and display
+
+		$DisplayX = ("{0,-20} {1,-18} {2}" -f $mac, $ip, $name)
+		$DisplayZ = ("{0,-20} {1,-18} {2}" -f $myMac, $internalIP, "$hostName (This Device)")
 		$lastOctet = [int]($ip -split '\.')[-1]
 		if ($myLastOctet -gt $lastOctet) {
-			Write-Host ("{0,-20} {1,-18} {2}" -f $mac, $ip, $name)
+			Write-Host $DisplayX
 		} else {
 			if ($self -ge 1) {
-				Write-Host ("{0,-20} {1,-18} {2}" -f $mac, $ip, $name)
+				Write-Host $DisplayX
 			} else {
-				Write-Host ("{0,-20} {1,-18} {2}" -f $myMac, $internalIP, "$hostName (This Device)")
-				Write-Host ("{0,-20} {1,-18} {2}" -f $mac, $ip, $name)
+				Write-Host $DisplayZ
+				Write-Host $DisplayX
 				$self++
 			}
 		}
