@@ -1,4 +1,4 @@
-# Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #65
+# Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #67
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
 	Start-Process Powershell "-nop -c `"iex ([io.file]::ReadAllText(`'$PSCommandPath`'))`"" -Verb RunAs
 	exit
