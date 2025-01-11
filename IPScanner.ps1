@@ -62,6 +62,11 @@ function Get-HostInfo {
 	}
 }
 
+# Get Vendor via Mac (thanks to u/mprz)
+function Get-MacVendor($mac) {
+	return (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace('-','').Substring(0,6))" -Method Get)
+}
+
 function Scan-Subnets {
 	# Clear ARP cache - Requires Admin
 	Remove-NetNeighbor -InterfaceAlias "$adapter" -AsJob -Confirm:$false | Out-Null
@@ -77,15 +82,16 @@ function Scan-Subnets {
 }
 
 function List-Machines {
-	$DisplayA = ("{0,-20} {1,-18} {2}" -f 'MAC ADDRESS', 'IP ADDRESS', 'REMOTE HOSTNAME')
+	$DisplayA = ("{0,-18} {1,-26} {2, -14} {3}" -f 'MAC ADDRESS', 'VENDOR', 'IP ADDRESS', 'REMOTE HOSTNAME')
 	Write-Host; Write-Host $DisplayA
-	Write-Host "==============================================================================="
+	Write-Host "================================================================================================="
 
 	# Filter for Reachable or Stale states and select only IP and MAC address
 	$arpOutput = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress | Sort-Object -Property IPAddress
 	$self = 0
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
-
+	$global:myVendor=(Get-MacVendor "$myMac").Company
+	
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
 		$mac = $line.LinkLayerAddress
@@ -94,10 +100,11 @@ function List-Machines {
 		} catch {
 			"Unable to Resolve"
 		}
-
+		$global:vendor=(Get-MacVendor "$mac").Company
+		
 		# Format and display
-		$DisplayX = ("{0,-20} {1,-18} {2}" -f $mac, $ip, $name)
-		$DisplayZ = ("{0,-20} {1,-18} {2}" -f $myMac, $internalIP, "$hostName (This Device)")
+		$DisplayX = ("{0,-18} {1,-26} {2, -14} {3}" -f $mac, $vendor, $ip, $name)
+		$DisplayZ = ("{0,-18} {1,-26} {2, -14} {3}" -f $myMac, $myVendor, $internalIP, "$hostName (This Device)")
 		$lastOctet = [int]($ip -split '\.')[-1]
 		if ($myLastOctet -gt $lastOctet) {
 			Write-Host $DisplayX
