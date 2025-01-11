@@ -62,7 +62,7 @@ function Get-HostInfo {
 
 function Scan-Subnets {
 	# Clear ARP cache - Requires Admin
-	Remove-NetNeighbor -InterfaceAlias "$adapter" -Confirm:$false
+	Remove-NetNeighbor -InterfaceAlias "$adapter" -AsJob -Confirm:$false | Out-Null
 
 	# Ping Entire Subnet
 	for ($i = 1; $i -le 254; $i++) {
