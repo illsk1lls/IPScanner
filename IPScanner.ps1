@@ -92,7 +92,7 @@ function List-Machines {
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
 	
 	# Get My Vendor via Mac lookup
-	$tryMyVendor=(Get-MacVendor "$myMac").Company | Out-Null
+	$tryMyVendor=(Get-MacVendor "$myMac").Company
 	$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(25, $tryMyVendor.Length))} else {'Unknown'}
 
 	# Cycle through ARP table
@@ -134,7 +134,9 @@ do {
 	Scan-Subnets
 	Write-Host 'Done';Write-Host
 	$hostOutput | Out-String -Stream | Where-Object { $_.Trim().Length -gt 0 } | Write-Host
+	$ProgressPreference='SilentlyContinue'
 	List-Machines
+	$ProgressPreference='Continue'
 	Write-Host;Write-Host -NoNewLine 'Press any key to refresh, (X) to Exit'
 	$Host.UI.RawUI.Flushinputbuffer()
 } until ($Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown').VirtualKeyCode -eq 88)
