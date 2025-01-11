@@ -1,5 +1,5 @@
-# Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #67
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+	# Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #71
 	Start-Process Powershell "-nop -c `"iex ([io.file]::ReadAllText(`'$PSCommandPath`'))`"" -Verb RunAs
 	exit
 }
@@ -14,7 +14,6 @@ if (-not $singleInstance){
 	Exit
 }
 
-# Functions
 function Get-HostInfo {
 	# Hostname
 	$global:hostName = hostName
@@ -62,8 +61,8 @@ function Get-HostInfo {
 	}
 }
 
-# Get Vendor via Mac (thanks to u/mprz)
 function Get-MacVendor($mac) {
+	# Get Vendor via Mac (thanks to u/mprz)
 	return (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace('-','').Substring(0,6))" -Method Get)
 }
 
@@ -82,6 +81,7 @@ function Scan-Subnets {
 }
 
 function List-Machines {
+	# Header
 	$DisplayA = ("{0,-18} {1,-26} {2, -14} {3}" -f 'MAC ADDRESS', 'VENDOR', 'IP ADDRESS', 'REMOTE HOSTNAME')
 	Write-Host; Write-Host $DisplayA
 	Write-Host "================================================================================================="
@@ -90,8 +90,12 @@ function List-Machines {
 	$arpOutput = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress | Sort-Object -Property IPAddress
 	$self = 0
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
-	$global:myVendor=(Get-MacVendor "$myMac").Company
 	
+	# Get My Vendor via Mac lookup
+	$tryMyVendor=(Get-MacVendor "$myMac").Company | Out-Null
+	$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(25, $tryMyVendor.Length))} else {'Unknown'}
+
+	# Cycle through ARP table
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
 		$mac = $line.LinkLayerAddress
@@ -100,8 +104,10 @@ function List-Machines {
 		} catch {
 			"Unable to Resolve"
 		}
-		$global:vendor=(Get-MacVendor "$mac").Company
-		
+		# Get Remote Device Vendor via Mac lookup
+		$tryVendor=(Get-MacVendor "$mac").Company
+		$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(25, $tryVendor.Length))} else {'Unknown'}		
+
 		# Format and display
 		$DisplayX = ("{0,-18} {1,-26} {2, -14} {3}" -f $mac, $vendor, $ip, $name)
 		$DisplayZ = ("{0,-18} {1,-26} {2, -14} {3}" -f $myMac, $myVendor, $internalIP, "$hostName (This Device)")
@@ -120,8 +126,8 @@ function List-Machines {
 	}
 }
 
-# Main
 do {
+	# Main
 	Clear-Host
 	Write-Host -NoNewLine 'Getting Ready...'
 	Get-HostInfo
