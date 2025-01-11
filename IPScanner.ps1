@@ -1,6 +1,6 @@
 # Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #66
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-	Start-Process powershell.exe "-nop -ep bypass -f `"$PSCommandPath`"" -Verb RunAs
+	Start-Process Powershell "-nop -ep bypass -f `"$PSCommandPath`"" -Verb RunAs
 	exit
 }
 
@@ -17,7 +17,7 @@ if (-not $singleInstance){
 # Functions
 function Get-HostInfo {
 	# Hostname
-	$global:hostName = $env:COMPUTERNAME
+	$global:hostName = hostName
 
 	# Check Internet Connection and Get External IP
 	$pingTest = Test-Connection -ComputerName "ifconfig.me" -Count 1 -Quiet
@@ -51,39 +51,27 @@ function Get-HostInfo {
 
 	# Output results
 	$global:hostOutput = [PSCustomObject]@{
-		Host = $hostName
-		ExternalIP = $externalIP
-		InternalIP = $internalIP
-		Adapter = $adapter
-		Subnet = $subnetMask
-		Gateway = $gateway
-		Domain = $domain
+		Host = if($hostName){$hostName} else {'Unknown'}
+		ExternalIP = if($externalIP){$externalIP} else {'Unknown'}
+		InternalIP = if($internalIP){$internalIP} else {'Unknown'}
+		Adapter = if($adapter){$adapter} else {'Unknown'}
+		Subnet = if($subnetMask){$subnetMask} else {'Unknown'}
+		Gateway = if($gateway){$gateway} else {'Unknown'}
+		Domain = if($domain){$domain} else {'Unknown'}
 	}
 }
 
 function Scan-Subnets {
 	# Clear ARP cache - Requires Admin
-	netsh interface ipv4 delete neighbors | Out-Null
-	
-	# Scan Interfaces
-	$arpOutput = arp -a | Out-String
-	$lines = $arpOutput -split '\r?\n'
+	Remove-NetNeighbor -InterfaceAlias "$adapter" -Confirm:$false
 
-	foreach ($line in $lines) {
-		if ($line -match 'Interface: (\d+\.\d+\.\d+\.\d+)') {
-			$interfaceIP = $matches[1]
-			$ipParts = $interfaceIP -split '\.'
-			$scanPrefix = "$($ipParts[0]).$($ipParts[1]).$($ipParts[2])."
-			if ($gatewayPrefix -eq $scanPrefix) {
-				for ($i = 1; $i -le 254; $i++) {
-					Test-Connection $scanPrefix$i -Count 1 -AsJob | Out-Null
-					Write-Progress -Activity "Sending Packets" -Status "Progress..." -PercentComplete ($i * (100 / 254))
-				}
-				Write-Progress -Activity "Sending Packets" -Status "Complete!" -PercentComplete 100
-				Start-Sleep -Seconds 1
-			}
-		}
+	# Ping Entire Subnet
+	for ($i = 1; $i -le 254; $i++) {
+		Test-Connection $gatewayPrefix$i -Count 1 -AsJob | Out-Null
+		Write-Progress -Activity "Sending Packets" -Status "Progress..." -PercentComplete ($i * (100 / 254))
 	}
+	Write-Progress -Activity "Sending Packets" -Status "Complete!" -PercentComplete 100
+	Start-Sleep -Seconds 1
 	Write-Progress -Activity "Sending Packets" -Completed
 }
 
@@ -92,38 +80,30 @@ function List-Machines {
 	Write-Host "MAC ADDRESS          IP ADDRESS         REMOTE HOSTNAME"
 	Write-Host "==============================================================================="
 
-	# Display refreshed ARP table information
-	$arpOutput = arp -a | Out-String
-	$lines = $arpOutput -split '\r?\n'
+	# Filter for Reachable or Stale states and select only IP and MAC address
+	$arpOutput = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress | Sort-Object -Property IPAddress
 	$self = 0
-	$myLastOctet = 0
+	$myLastOctet = [int]($internalIP -split '\.')[-1]
 
-	foreach ($line in $lines) {
-		if ($line -match 'Interface: (\d+\.\d+\.\d+\.\d+)') {
-			$myIP = $matches[1]
-			$myLastOctet = [int]($myIP -split '\.')[-1]
-		} elseif ($line -match '(\d+\.\d+\.\d+\.\d+)\s+(\S+)\s+dynamic') {
-			$ip = $matches[1]
-			$mac = $matches[2]
-			$name = try {
-				([System.Net.Dns]::GetHostEntry($ip)).HostName
-			} catch {
-				"Unable to Resolve"
-			}
-
-			# Format and display
-			$ipFormatted = "{0,-15}" -f $ip
-			$lastOctet = [int]($ip -split '\.')[-1]
-			if ($myLastOctet -gt $lastOctet) {
-				Write-Host ("{0,-20} {1,-18} {2}" -f $mac, $ipFormatted, $name)
+	foreach ($line in $arpOutput) {
+		$ip = $line.IPAddress
+		$mac = $line.LinkLayerAddress
+		$name = try {
+			([System.Net.Dns]::GetHostEntry($ip)).HostName
+		} catch {
+			"Unable to Resolve"
+		}
+		# Format and display
+		$lastOctet = [int]($ip -split '\.')[-1]
+		if ($myLastOctet -gt $lastOctet) {
+			Write-Host ("{0,-20} {1,-18} {2}" -f $mac, $ip, $name)
+		} else {
+			if ($self -ge 1) {
+				Write-Host ("{0,-20} {1,-18} {2}" -f $mac, $ip, $name)
 			} else {
-				if ($self -ge 1) {
-					Write-Host ("{0,-20} {1,-18} {2}" -f $mac, $ipFormatted, $name)
-				} else {
-					Write-Host ("{0,-20} {1,-18} {2}" -f $myMac, $myIP, "$hostName (This Device)")
-					Write-Host ("{0,-20} {1,-18} {2}" -f $mac, $ipFormatted, $name)
-					$self++
-				}
+				Write-Host ("{0,-20} {1,-18} {2}" -f $myMac, $internalIP, "$hostName (This Device)")
+				Write-Host ("{0,-20} {1,-18} {2}" -f $mac, $ip, $name)
+				$self++
 			}
 		}
 	}
