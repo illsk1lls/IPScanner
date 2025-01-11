@@ -46,8 +46,7 @@ function Get-HostInfo {
 	$subnetMask = ([System.Net.IPAddress]::Parse(($([Math]::Pow(2, $prefixLength)) - 1) * [Math]::Pow(2, 32 - $prefixLength))).GetAddressBytes() -join "."
 
 	# Domain
-	$domain = (Get-WmiObject -Class Win32_ComputerSystem).Domain
-	$global:domain = if ([string]::IsNullOrEmpty($domain)) { "Unknown" } else { $domain }
+	$global:domain = (Get-WmiObject -Class Win32_ComputerSystem).Domain
 
 	# Output results
 	$global:hostOutput = [PSCustomObject]@{
