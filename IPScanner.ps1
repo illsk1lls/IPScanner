@@ -94,8 +94,8 @@ function List-Machines {
 		} catch {
 			"Unable to Resolve"
 		}
-		# Format and display
 
+		# Format and display
 		$DisplayX = ("{0,-20} {1,-18} {2}" -f $mac, $ip, $name)
 		$DisplayZ = ("{0,-20} {1,-18} {2}" -f $myMac, $internalIP, "$hostName (This Device)")
 		$lastOctet = [int]($ip -split '\.')[-1]
