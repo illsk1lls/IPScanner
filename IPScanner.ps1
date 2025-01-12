@@ -166,6 +166,7 @@ function Update-Gui(){
 		<Style x:Key="AlternatingRowStyle" TargetType="{x:Type ListViewItem}" >
 			<Setter Property="Background" Value="#111111"/>
 			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Setter Property="FontWeight" Value="Normal"/>
 			<Style.Triggers>
 				<Trigger Property="ItemsControl.AlternationIndex" Value="1">                            
 					<Setter Property="Background" Value="#000000"/>
@@ -180,7 +181,9 @@ function Update-Gui(){
 						<Condition Property="IsSelected" Value="true" />
 						<Condition Property="Selector.IsSelectionActive" Value="true" />
 					</MultiTrigger.Conditions>
-				<Setter Property="Background" Value="#555555" />
+				<Setter Property="Background" Value="{x:Static SystemColors.ControlDarkDarkBrush}" />
+				<Setter Property="Foreground" Value="#000000" />
+				<Setter Property="FontWeight" Value="Bold"/>
 				</MultiTrigger>
 			</Style.Triggers>
 		</Style>
@@ -201,7 +204,7 @@ function Update-Gui(){
 				<Label Name="BarText" Foreground="#EEEEEE" FontWeight="Bold" Content="Scan" Width="150" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
 			</Grid>
 		</Button>
-	   <ListView Name="listView" Background="#333333" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource AlternatingRowStyle}">
+	   <ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource AlternatingRowStyle}">
 			<ListView.View>
 				<GridView>
 					<GridViewColumn Header= "MAC Address" DisplayMemberBinding ="{Binding MACaddress}" Width="150"/>
