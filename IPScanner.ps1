@@ -1,16 +1,20 @@
+# Hide Console - Show GUI Only
+Add-Type -MemberDefinition '[DllImport("User32.dll")]public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Namespace Win32 -Name Functions
+$closeConsoleUseGUI=[Win32.Functions]::ShowWindow((Get-Process -Id $PID).MainWindowHandle,0)
+
+# Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #78
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-	# Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #71
 	Start-Process Powershell "-nop -c `"iex ([io.file]::ReadAllText(`'$PSCommandPath`'))`"" -Verb RunAs
 	exit
 }
 
 # Allow Single Instance Only
-$AppId = 'IPScanner'
+$AppId = 'Primitive IPScanner'
 $singleInstance = $false
 $script:SingleInstanceEvent = New-Object Threading.EventWaitHandle $true,([Threading.EventResetMode]::ManualReset),"Global\$AppId",([ref] $singleInstance)
 if (-not $singleInstance){
 	$shell = New-Object -ComObject Wscript.Shell
-	$shell.Popup("IPScanner is already running!",0,'ERROR:',0x0) | Out-Null
+	$shell.Popup("Primitive IPScanner is already running!",0,'ERROR:',0x0) | Out-Null
 	Exit
 }
 
@@ -67,35 +71,36 @@ function Get-MacVendor($mac) {
 }
 
 function Scan-Subnet {
+	$Progress.Value = 0
+	$BarText.Content = 'Sending Packets'
+
 	# Clear ARP cache - Requires Admin
 	Remove-NetNeighbor -InterfaceAlias "$adapter" -AsJob -Confirm:$false | Out-Null
 
 	# Ping Entire Subnet
 	for ($i = 1; $i -le 254; $i++) {
 		Test-Connection $gatewayPrefix$i -Count 1 -AsJob | Out-Null
-		Write-Progress -Activity "Sending Packets" -Status "Progress..." -PercentComplete ($i * (100 / 254))
+		$Progress.Value = ($i * (100 / 254))
+		Start-Sleep -Milliseconds 10
+		Update-Gui
 	}
-	Write-Progress -Activity "Sending Packets" -Status "Done" -PercentComplete 100
-	Start-Sleep -Seconds 1
-	Write-Progress -Activity "Sending Packets" -Completed
 }
 
 function waitForResponses {
+	$Progress.Value = 0
+	$BarText.Content = 'Listening'
+
 	# Wait with progress
 	for ($i = 1; $i -le 100; $i++) {
-		Write-Progress -Activity "Listening" -Status "Waiting for responses..." -PercentComplete ($i)
-		Start-Sleep -Milliseconds 50
+		$Progress.Value = $i
+		Update-Gui
+		Start-Sleep -Milliseconds 150
 	}
-	Write-Progress -Activity "Listening" -Status "Done" -PercentComplete 100
-	Start-Sleep -Seconds 1
-	Write-Progress -Activity "Listening" -Completed	
 }
 
 function List-Machines {
-	# Header
-	$DisplayA = ("{0,-18} {1,-26} {2, -14} {3}" -f 'MAC ADDRESS', 'VENDOR', 'IP ADDRESS', 'REMOTE HOSTNAME')
-	Write-Host; Write-Host $DisplayA
-	Write-Host "================================================================================================="
+	$Progress.Value = "0"
+	$BarText.Content = 'Generating List'
 
 	# Filter for Reachable or Stale states and select only IP and MAC address
 	$arpOutput = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress | Sort-Object -Property IPAddress
@@ -120,35 +125,135 @@ function List-Machines {
 		$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(25, $tryVendor.Length))} else {'Unknown'}		
 
 		# Format and display
-		$DisplayX = ("{0,-18} {1,-26} {2, -14} {3}" -f $mac, $vendor, $ip, $name)
-		$DisplayZ = ("{0,-18} {1,-26} {2, -14} {3}" -f $myMac, $myVendor, $internalIP, "$hostName (This Device)")
 		$lastOctet = [int]($ip -split '\.')[-1]
 		if ($myLastOctet -gt $lastOctet) {
-			Write-Host $DisplayX
+			$listView.items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}) | Out-Null
+			Update-Gui
 		} else {
 			if ($self -ge 1) {
-				Write-Host $DisplayX
+				$listView.items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}) | Out-Null
+				Update-Gui
 			} else {
-				Write-Host $DisplayZ
-				Write-Host $DisplayX
+				$listView.items.Add([pscustomobject]@{'MACaddress'="$myMac";'Vendor'="$myVendor";'IPaddress'="$internalIP";'HostName'="$hostName (This Device)"}) | Out-Null
+				Update-Gui
+				$listView.items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}) | Out-Null
+				Update-Gui
 				$self++
 			}
 		}
 	}
 }
 
-do {
-	# Main
-	Clear-Host
-	Write-Host -NoNewLine 'Getting Ready...'
+function Update-Gui(){
+	$Main.Dispatcher.Invoke([Windows.Threading.DispatcherPriority]::Background, [action]{})
+}
+
+# Define WPF GUI Structure
+[void][System.Reflection.Assembly]::LoadWithPartialName('presentationframework')
+[xml]$XAML = @'
+<Window 
+		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+		Title="Primitive IPScanner" Height="500" Width="900" Background="#222222" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize">
+	<Window.Resources>
+		<ControlTemplate x:Key="NoMouseOverButtonTemplate" TargetType="Button">
+			<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+				<ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+			</Border>
+			<ControlTemplate.Triggers>
+				<Trigger Property="IsEnabled" Value="False">
+					<Setter Property="Background" Value="{x:Static SystemColors.ControlLightBrush}"/>
+					<Setter Property="Foreground" Value="{x:Static SystemColors.GrayTextBrush}"/>
+				</Trigger>
+			</ControlTemplate.Triggers>
+		</ControlTemplate>
+		<Style x:Key="AlternatingRowStyle" TargetType="{x:Type Control}" >
+			<Setter Property="Background" Value="#111111"/>
+			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Style.Triggers>
+				<Trigger Property="ItemsControl.AlternationIndex" Value="1">                            
+					<Setter Property="Background" Value="#000000"/>
+					<Setter Property="Foreground" Value="#EEEEEE"/>                                
+				</Trigger>                            
+			</Style.Triggers>
+		</Style>
+		<Style x:Key="{x:Type ScrollBar}" TargetType="{x:Type ScrollBar}">
+			<Setter Property="Stylus.IsFlicksEnabled" Value="True" />
+			<Style.Triggers>
+				<Trigger Property="Orientation" Value="Horizontal">
+					<Setter Property="Height" Value="10" />
+					<Setter Property="MinHeight" Value="10" />
+				</Trigger>
+				<Trigger Property="Orientation" Value="Vertical">
+					<Setter Property="Width" Value="10" />
+					<Setter Property="MinWidth" Value="10" />
+				</Trigger>
+			</Style.Triggers>
+		</Style>
+	</Window.Resources>		
+	<Grid Margin="0,0,50,0">
+		<Button Name="Scan" Background="#000000" Foreground="#000000" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,9,0,0" Template="{StaticResource NoMouseOverButtonTemplate}">
+			<Grid>
+				<ProgressBar Name="Progress" Background="#777777" Value="0" Maximum="100" Width="775" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
+				<Label Name="BarText" Foreground="#EEEEEE" FontWeight="Bold" Content="Scan" Width="150" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+			</Grid>
+		</Button>
+	   <ListView Name="listView" Background="#333333" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource AlternatingRowStyle}">
+			<ListView.View>
+				<GridView>
+					<GridViewColumn Header= "MAC Address" DisplayMemberBinding ="{Binding MACaddress}" Width="150"/>
+					<GridViewColumn Header= "Vendor" DisplayMemberBinding ="{Binding Vendor}" Width="250"/>
+					<GridViewColumn Header= "IP Address" DisplayMemberBinding ="{Binding IPaddress}" Width="140"/>
+					<GridViewColumn Header= "Host Name" DisplayMemberBinding ="{Binding HostName}" Width="300"/>
+				</GridView>
+			</ListView.View>
+		</ListView>
+	</Grid>
+</Window>
+'@
+
+# Load XAML
+$reader=(New-Object System.Xml.XmlNodeReader $xaml) 
+try{$Main=[Windows.Markup.XamlReader]::Load( $reader )}
+catch{Write-Host "Unable to load Windows.Markup.XamlReader. Some possible causes for this problem include: .NET Framework is missing, PowerShell must be launched with PowerShell -sta, invalid XAML code was encountered."}
+
+# Store Form Objects In PowerShell
+$xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main.FindName($_.Name)}
+
+$Main.Add_Closing({[System.Windows.Forms.Application]::Exit();Stop-Process $pid})
+
+$listView.Add_MouseDoubleClick({
+	# Scan for shares via Windows Explorer
+	$launch = $listView.SelectedItems.HostName
+	&explorer "`"\\$launch`""
+})
+
+$Scan.Add_MouseEnter({
+	$Progress.Background = '#EEEEEE'
+	$BarText.Foreground = '#000000'
+})
+$Scan.Add_MouseLeave({
+	$Progress.Background = '#777777'
+	$BarText.Foreground = '#000000'
+})
+
+# Define Button Actions
+$Scan.Add_Click({
+	$BarText.Content = 'Please Wait'
+	$Scan.IsEnabled = $false
+	$global:listview.Items.Clear()
+	Update-Gui
 	Get-HostInfo
 	Scan-Subnet
 	waitForResponses
-	Write-Host 'Done';Write-Host
-	$hostOutput | Out-String -Stream | Where-Object { $_.Trim().Length -gt 0 } | Write-Host
-	$ProgressPreference = 'SilentlyContinue'
 	List-Machines
-	$ProgressPreference = 'Continue'
-	Write-Host;Write-Host -NoNewLine 'Press any key to refresh, (X) to Exit'
-	$Host.UI.RawUI.Flushinputbuffer()
-} until ($Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown').VirtualKeyCode -eq 88)
+	$BarText.Content = 'Scan'
+	$Scan.IsEnabled = $true
+})
+
+$global:listview.Items.Clear()
+
+# Show Window
+$Main.ShowDialog() | out-null
+$appContext=New-Object System.Windows.Forms.ApplicationContext
+[void][System.Windows.Forms.Application]::Run($appContext)
