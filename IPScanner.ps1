@@ -96,7 +96,7 @@ function waitForResponses {
 
 function List-Machines {
 	$Progress.Value = "0"
-	$BarText.Content = 'Generating List'
+	$BarText.Content = 'Resolving Remote Hostnames'
 
 	# Filter for Reachable or Stale states and select only IP and MAC address
 	$arpOutput = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress | Sort-Object -Property IPAddress
@@ -201,7 +201,7 @@ function Update-Gui(){
 		<Button Name="Scan" Background="#000000" Foreground="#000000" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,9,0,0" Template="{StaticResource NoMouseOverButtonTemplate}">
 			<Grid>
 				<ProgressBar Name="Progress" Background="#777777" Value="0" Maximum="100" Width="775" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
-				<Label Name="BarText" Foreground="#EEEEEE" FontWeight="Bold" Content="Scan" Width="150" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+				<Label Name="BarText" Foreground="#000000" FontWeight="Bold" Content="Scan" Width="250" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
 			</Grid>
 		</Button>
 	   <ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource AlternatingRowStyle}">
@@ -246,7 +246,7 @@ $Scan.Add_MouseLeave({
 })
 
 $Scan.Add_Click({
-	$BarText.Content = 'Please Wait'
+	$BarText.Content = 'Getting localHost Info'
 	$Scan.IsEnabled = $false
 	$global:listview.Items.Clear()
 	Update-Gui
