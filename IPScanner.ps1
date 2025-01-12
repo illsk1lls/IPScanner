@@ -140,6 +140,7 @@ function List-Machines {
 	}
 }
 
+# No multi-threading in this version ;(
 function Update-Gui(){
 	$Main.Dispatcher.Invoke([Windows.Threading.DispatcherPriority]::Background, [action]{})
 }
@@ -223,16 +224,17 @@ $listView.Add_MouseDoubleClick({
 	&explorer "`"\\$launch`""
 })
 
+# Define Button Actions
 $Scan.Add_MouseEnter({
 	$Progress.Background = '#EEEEEE'
 	$BarText.Foreground = '#000000'
 })
+
 $Scan.Add_MouseLeave({
 	$Progress.Background = '#777777'
 	$BarText.Foreground = '#000000'
 })
 
-# Define Button Actions
 $Scan.Add_Click({
 	$BarText.Content = 'Please Wait'
 	$Scan.IsEnabled = $false
