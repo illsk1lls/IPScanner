@@ -4,4 +4,4 @@
 
 For use with simple networks to get an up to date list of client: MAC Address, Vendor, IP Address, and Hostnames<br>
 
-External IP address and Domain are also displayed in the titlebar after initiating a scan.<br>
+External IP Address and Domain are also displayed in the titlebar after initiating a scan<br>
