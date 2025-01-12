@@ -150,7 +150,7 @@ function Update-Gui(){
 <Window 
 		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-		Title="Primitive IPScanner" Height="500" Width="900" Background="#222222" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize">
+		Title="Primitive IP Scanner" Height="500" Width="900" Background="#222222" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize">
 	<Window.Resources>
 		<ControlTemplate x:Key="NoMouseOverButtonTemplate" TargetType="Button">
 			<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
@@ -240,7 +240,7 @@ $Scan.Add_Click({
 	$global:listview.Items.Clear()
 	Update-Gui
 	Get-HostInfo
-	$Main.Title="Primitive IPScanner `- `[External IP: $externalIP `] `- `[Domain: $domain `]"
+	$Main.Title="Primitive IP Scanner `- `[External IP: $externalIP `] `- `[Domain: $domain `]"
 	Scan-Subnet
 	waitForResponses
 	List-Machines
