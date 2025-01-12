@@ -1,4 +1,4 @@
-# Primitive IP Scanner - A Powershell Network Scanner
+# Simple IP Scanner - A Powershell Network Scanner
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/IPScanner.png?raw=true"><p>
 
