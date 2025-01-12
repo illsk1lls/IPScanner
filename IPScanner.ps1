@@ -66,6 +66,7 @@ function Get-MacVendor($mac) {
 	return (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
 }
 
+# Get ARP table ready and send out pings 
 function Scan-Subnet {
 	$Progress.Value = 0
 	$BarText.Content = 'Sending Packets'
@@ -82,6 +83,7 @@ function Scan-Subnet {
 	}
 }
 
+# Give machines time to respond
 function waitForResponses {
 	$Progress.Value = 0
 	$BarText.Content = 'Listening'
@@ -94,6 +96,7 @@ function waitForResponses {
 	}
 }
 
+# Build ListView
 function List-Machines {
 	$Progress.Value = "0"
 	$BarText.Content = 'Resolving Remote Hostnames'
@@ -163,7 +166,7 @@ function Update-Gui(){
 				</Trigger>
 			</ControlTemplate.Triggers>
 		</ControlTemplate>
-		<Style x:Key="AlternatingRowStyle" TargetType="{x:Type ListViewItem}" >
+		<Style x:Key="ListViewStyle" TargetType="{x:Type ListViewItem}" >
 			<Setter Property="Background" Value="#111111"/>
 			<Setter Property="Foreground" Value="#EEEEEE"/>
 			<Setter Property="FontWeight" Value="Normal"/>
@@ -204,7 +207,7 @@ function Update-Gui(){
 				<Label Name="BarText" Foreground="#000000" FontWeight="Bold" Content="Scan" Width="250" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
 			</Grid>
 		</Button>
-	   <ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource AlternatingRowStyle}">
+	   <ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
 			<ListView.View>
 				<GridView>
 					<GridViewColumn Header= "MAC Address" DisplayMemberBinding ="{Binding MACaddress}" Width="150"/>
@@ -219,15 +222,17 @@ function Update-Gui(){
 '@
 
 # Load XAML
-$reader=(New-Object System.Xml.XmlNodeReader $xaml) 
-try{$Main=[Windows.Markup.XamlReader]::Load( $reader )}
-catch{Write-Host "Unable to load Windows.Markup.XamlReader. Some possible causes for this problem include: .NET Framework is missing, PowerShell must be launched with PowerShell -sta, invalid XAML code was encountered."}
+$reader = (New-Object System.Xml.XmlNodeReader $xaml) 
+try{$Main = [Windows.Markup.XamlReader]::Load( $reader )}
+catch{$shell = New-Object -ComObject Wscript.Shell; $shell.Popup("Unable to load GUI!",0,'ERROR:',0x0) | Out-Null; Exit}
 
 # Store Form Objects In PowerShell
 $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main.FindName($_.Name)}
 
+# Add Closing
 $Main.Add_Closing({[System.Windows.Forms.Application]::Exit();Stop-Process $pid})
 
+# Actions on ListItem Double-Click
 $listView.Add_MouseDoubleClick({
 	# Check if WebInterface exists
 	$launch = $listView.SelectedItems.HostName
@@ -248,7 +253,7 @@ $listView.Add_MouseDoubleClick({
 	}
 })
 
-# Define Button Actions
+# Define Scan Button Actions
 $Scan.Add_MouseEnter({
 	$Progress.Background = '#EEEEEE'
 	$BarText.Foreground = '#000000'
@@ -273,6 +278,7 @@ $Scan.Add_Click({
 	$Scan.IsEnabled = $true
 })
 
+# Ensure clean ListView before launching
 $global:listview.Items.Clear()
 
 # Show Window
