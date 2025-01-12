@@ -9,12 +9,12 @@ if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
 }
 
 # Allow Single Instance Only
-$AppId = 'Primitive IPScanner'
+$AppId = 'Primitive IP Scanner'
 $singleInstance = $false
 $script:SingleInstanceEvent = New-Object Threading.EventWaitHandle $true,([Threading.EventResetMode]::ManualReset),"Global\$AppId",([ref] $singleInstance)
 if (-not $singleInstance){
 	$shell = New-Object -ComObject Wscript.Shell
-	$shell.Popup("Primitive IPScanner is already running!",0,'ERROR:',0x0) | Out-Null
+	$shell.Popup("$AppId is already running!",0,'ERROR:',0x0) | Out-Null
 	Exit
 }
 
@@ -153,7 +153,7 @@ function Update-Gui(){
 [xml]$XAML = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-		Title="Primitive IP Scanner" Height="500" Width="900" Background="#222222" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize">
+		Height="500" Width="900" Background="#222222" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize">
 	<Window.Resources>
 		<ControlTemplate x:Key="NoMouseOverButtonTemplate" TargetType="Button">
 			<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
@@ -229,7 +229,8 @@ catch{$shell = New-Object -ComObject Wscript.Shell; $shell.Popup("Unable to load
 # Store Form Objects In PowerShell
 $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main.FindName($_.Name)}
 
-# Add Closing
+# Set Title and Add Closing
+$Main.Title = "$AppId"
 $Main.Add_Closing({[System.Windows.Forms.Application]::Exit();Stop-Process $pid})
 
 # Actions on ListItem Double-Click
@@ -270,7 +271,7 @@ $Scan.Add_Click({
 	$global:listview.Items.Clear()
 	Update-Gui
 	Get-HostInfo
-	$Main.Title="Primitive IP Scanner `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
+	$Main.Title="$AppId `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
 	Scan-Subnet
 	waitForResponses
 	List-Machines
