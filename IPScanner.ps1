@@ -234,8 +234,6 @@ $listView.Add_MouseDoubleClick({
 	&explorer "`"\\$launch`""
 })
 
-
-
 # Define Button Actions
 $Scan.Add_MouseEnter({
 	$Progress.Background = '#EEEEEE'
