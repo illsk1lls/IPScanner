@@ -170,16 +170,16 @@ function Update-Gui(){
 				<Trigger Property="ItemsControl.AlternationIndex" Value="1">                            
 					<Setter Property="Background" Value="#000000"/>
 					<Setter Property="Foreground" Value="#EEEEEE"/>                                
-				</Trigger>                            
+				</Trigger>
+				<Trigger Property="IsMouseOver" Value="True">
+					<Setter Property="Background" Value="Transparent" />
+					<Setter Property="BorderBrush" Value="#333333" />
+				</Trigger>				
 			</Style.Triggers>
 		</Style>
 		<Style x:Key="{x:Type ScrollBar}" TargetType="{x:Type ScrollBar}">
 			<Setter Property="Stylus.IsFlicksEnabled" Value="True" />
 			<Style.Triggers>
-				<Trigger Property="Orientation" Value="Horizontal">
-					<Setter Property="Height" Value="10" />
-					<Setter Property="MinHeight" Value="10" />
-				</Trigger>
 				<Trigger Property="Orientation" Value="Vertical">
 					<Setter Property="Width" Value="10" />
 					<Setter Property="MinWidth" Value="10" />
@@ -224,6 +224,8 @@ $listView.Add_MouseDoubleClick({
 	&explorer "`"\\$launch`""
 })
 
+
+
 # Define Button Actions
 $Scan.Add_MouseEnter({
 	$Progress.Background = '#EEEEEE'
@@ -241,7 +243,7 @@ $Scan.Add_Click({
 	$global:listview.Items.Clear()
 	Update-Gui
 	Get-HostInfo
-	$Main.Title="Primitive IP Scanner `- `[External IP: $externalIP `] `- `[Domain: $domain `]"
+	$Main.Title="Primitive IP Scanner `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
 	Scan-Subnet
 	waitForResponses
 	List-Machines
