@@ -51,18 +51,14 @@ function Get-HostInfo {
 	$subnetMask = ([System.Net.IPAddress]::Parse(($([Math]::Pow(2, $prefixLength)) - 1) * [Math]::Pow(2, 32 - $prefixLength))).GetAddressBytes() -join "."
 
 	# Domain
-	$domain = (Get-WmiObject -Class Win32_ComputerSystem).Domain
+	$global:domain = (Get-WmiObject -Class Win32_ComputerSystem).Domain
 
-	# Output results
-	$global:hostOutput = [PSCustomObject]@{
-		Host = if($hostName){$hostName} else {'Unknown'}
-		ExternalIP = if($externalIP){$externalIP} else {'Unknown'}
-		InternalIP = if($internalIP){$internalIP} else {'Unknown'}
-		Adapter = if($adapter){$adapter} else {'Unknown'}
-		Subnet = if($subnetMask){$subnetMask} else {'Unknown'}
-		Gateway = if($gateway){$gateway} else {'Unknown'}
-		Domain = if($domain){$domain} else {'Unknown'}
+	# Mark empty as Unknown
+	$SetFinalVar = @('hostName', 'externalIP', 'internalIP', 'adapter', 'subnetMask', 'gateway', 'domain')
+	foreach ($var in $SetFinalVar) {
+		Set-Variable -Name $var -Value (Get-Variable -Name $var -ErrorAction SilentlyContinue).Value ?? 'Unknown'
 	}
+
 }
 
 function Get-MacVendor($mac) {
@@ -244,6 +240,7 @@ $Scan.Add_Click({
 	$global:listview.Items.Clear()
 	Update-Gui
 	Get-HostInfo
+	$Main.Title="Primitive IPScanner `- `[External IP: $externalIP `] `- `[Domain: $domain `]"
 	Scan-Subnet
 	waitForResponses
 	List-Machines
