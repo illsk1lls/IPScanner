@@ -6,4 +6,4 @@ For use with simple networks to get an up to date list of client: MAC Address, V
 
 External IP Address and Domain are also displayed in the titlebar after initiating a scan<br>
 
-Double-Clicking a listed item will attempt to browse to that item, using the first available option (In the following order): HTTPS \>\> HTTP \>\> Share<br>
+Double-Clicking a listed item will attempt to browse to that item, using the first available option (In the following order): HTTPS \>\> HTTP \>\> BrowseShare<br>
