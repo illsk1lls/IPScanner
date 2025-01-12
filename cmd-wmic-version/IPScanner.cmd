@@ -31,8 +31,17 @@ EXIT /b
 
 :LISTMACHINES
 SET/A SELF=0
-CLS&ECHO  Adapter Name     : !ADAPTER!&ECHO  External IP      : !EXT!&ECHO  Internal IP      : !ISHOST!&ECHO  Subnet Mask      : !SUBNET!&ECHO  Default Gateway  : !GATEWAY!&ECHO  Domain/Workgroup : !DOMAIN!&ECHO  Hostname         : !HOST!
-ECHO/&ECHO     MAC ADDRESS         IP ADDRESS        REMOTE HOSTNAME&ECHO ===============================================================================
+CLS
+ECHO  Adapter Name     : !ADAPTER!
+ECHO  External IP      : !EXT!
+ECHO  Internal IP      : !ISHOST!
+ECHO  Subnet Mask      : !SUBNET!
+ECHO  Default Gateway  : !GATEWAY!
+ECHO  Domain/Workgroup : !DOMAIN!
+ECHO  Hostname         : !HOST!
+ECHO/
+ECHO     MAC ADDRESS         IP ADDRESS        REMOTE HOSTNAME
+ECHO ===============================================================================
 FOR /f "usebackq tokens=1-3" %%a IN (`ARP -a`) DO (
 	IF "%%a"=="Interface:" (
 		SET ME=%%b
@@ -99,7 +108,8 @@ FOR /f "usebackq skip=1 tokens=1*" %%# in (`"WMIC NICConfig Where IPEnabled="Tru
 EXIT /b
 
 :SCANSUBNETS
-CLS&NETSH Interface IPV4 DELETE Neighbors>nul
+CLS
+NETSH Interface IPV4 DELETE Neighbors>nul
 FOR /f "usebackq tokens=1,2" %%# IN (`ARP -a`) DO (
 	IF "%%#"=="Interface:" (
 		SET "INTF=%%$"
