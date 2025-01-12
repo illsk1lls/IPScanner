@@ -105,7 +105,7 @@ function List-Machines {
 	
 	# Get My Vendor via Mac lookup
 	$tryMyVendor = (Get-MacVendor "$myMac").Company
-	$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(25, $tryMyVendor.Length))} else {'Unknown'}
+	$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unknown'}
 
 	# Cycle through ARP table
 	foreach ($line in $arpOutput) {
@@ -118,7 +118,7 @@ function List-Machines {
 		}
 		# Get Remote Device Vendor via Mac lookup
 		$tryVendor=(Get-MacVendor "$mac").Company
-		$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(25, $tryVendor.Length))} else {'Unknown'}		
+		$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(35, $tryVendor.Length))} else {'Unknown'}		
 
 		# Format and display
 		$lastOctet = [int]($ip -split '\.')[-1]
@@ -229,9 +229,23 @@ $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main
 $Main.Add_Closing({[System.Windows.Forms.Application]::Exit();Stop-Process $pid})
 
 $listView.Add_MouseDoubleClick({
-	# Scan for shares via Windows Explorer
+	# Check if WebInterface exists
 	$launch = $listView.SelectedItems.HostName
-	&explorer "`"\\$launch`""
+	$checkForWebInterface = "$launch"
+	$TCPClient = [System.Net.Sockets.TcpClient]::new()
+	$TCPClientS = [System.Net.Sockets.TcpClient]::new()
+	$Result = $TCPClient.ConnectAsync($checkForWebInterface, 80).Wait(250)
+	$ResultS = $TCPClient.ConnectAsync($checkForWebInterface, 443).Wait(250)
+	$TCPClient.Close()
+	$TCPClientS.Close()
+	# Priority order: HTTPS/HTTP/BrowseShare
+	if($ResultS) {
+		Start-Process "`"https://$launch`""
+	} elseif($Result) {
+		Start-Process "`"http://$launch`""	
+	} else {
+		&explorer "`"\\$launch`""
+	}
 })
 
 # Define Button Actions
