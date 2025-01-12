@@ -163,7 +163,7 @@ function Update-Gui(){
 				</Trigger>
 			</ControlTemplate.Triggers>
 		</ControlTemplate>
-		<Style x:Key="AlternatingRowStyle" TargetType="{x:Type Control}" >
+		<Style x:Key="AlternatingRowStyle" TargetType="{x:Type ListViewItem}" >
 			<Setter Property="Background" Value="#111111"/>
 			<Setter Property="Foreground" Value="#EEEEEE"/>
 			<Style.Triggers>
@@ -175,6 +175,13 @@ function Update-Gui(){
 					<Setter Property="Background" Value="Transparent" />
 					<Setter Property="BorderBrush" Value="#333333" />
 				</Trigger>				
+				<MultiTrigger>
+					<MultiTrigger.Conditions>
+						<Condition Property="IsSelected" Value="true" />
+						<Condition Property="Selector.IsSelectionActive" Value="true" />
+					</MultiTrigger.Conditions>
+				<Setter Property="Background" Value="#555555" />
+				</MultiTrigger>
 			</Style.Triggers>
 		</Style>
 		<Style x:Key="{x:Type ScrollBar}" TargetType="{x:Type ScrollBar}">
