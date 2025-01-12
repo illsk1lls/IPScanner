@@ -9,7 +9,7 @@ if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]:
 }
 
 # Allow Single Instance Only
-$AppId = 'Primitive IP Scanner'
+$AppId = 'Simple IP Scanner'
 $singleInstance = $false
 $script:SingleInstanceEvent = New-Object Threading.EventWaitHandle $true,([Threading.EventResetMode]::ManualReset),"Global\$AppId",([ref] $singleInstance)
 if (-not $singleInstance){
@@ -18,6 +18,7 @@ if (-not $singleInstance){
 	Exit
 }
 
+# Host info used to determine correct subnet to scan via Gateway prefix
 function Get-HostInfo {
 	# Hostname
 	$global:hostName = hostName
@@ -143,6 +144,29 @@ function List-Machines {
 	}
 }
 
+# Launch selected item in browser or file explorer
+function Launch-WebInterfaceOrShare {
+    param (
+        [string]$selectedhost
+    )
+	$launch = $selectedhost.Replace(' (This Device)','')
+	# Check if WebInterface exists
+	$TCPClient = [System.Net.Sockets.TcpClient]::new()
+	$TCPClientS = [System.Net.Sockets.TcpClient]::new()
+	$Result = $TCPClient.ConnectAsync($launch, 80).Wait(250)
+	$ResultS = $TCPClient.ConnectAsync($launch, 443).Wait(250)
+	$TCPClient.Close()
+	$TCPClientS.Close()
+	# Priority order: HTTPS/HTTP/BrowseShare
+	if($ResultS -and $HostName -ne $launch) {
+		Start-Process "`"https://$launch`""
+	} elseif($Result -and $HostName -ne $launch) {
+		Start-Process "`"http://$launch`""	
+	} else {
+		&explorer "`"\\$launch`""
+	}
+}
+
 # No multi-threading in this version ;(
 function Update-Gui(){
 	$Main.Dispatcher.Invoke([Windows.Threading.DispatcherPriority]::Background, [action]{})
@@ -235,23 +259,8 @@ $Main.Add_Closing({[System.Windows.Forms.Application]::Exit();Stop-Process $pid}
 
 # Actions on ListItem Double-Click
 $listView.Add_MouseDoubleClick({
-	# Check if WebInterface exists
-	$launch = $listView.SelectedItems.HostName
-	$checkForWebInterface = "$launch"
-	$TCPClient = [System.Net.Sockets.TcpClient]::new()
-	$TCPClientS = [System.Net.Sockets.TcpClient]::new()
-	$Result = $TCPClient.ConnectAsync($checkForWebInterface, 80).Wait(250)
-	$ResultS = $TCPClient.ConnectAsync($checkForWebInterface, 443).Wait(250)
-	$TCPClient.Close()
-	$TCPClientS.Close()
-	# Priority order: HTTPS/HTTP/BrowseShare
-	if($ResultS) {
-		Start-Process "`"https://$launch`""
-	} elseif($Result) {
-		Start-Process "`"http://$launch`""	
-	} else {
-		&explorer "`"\\$launch`""
-	}
+	$selectedHost = $listView.SelectedItems.HostName
+	Launch-WebInterfaceOrShare -selectedhost "$selectedHost"
 })
 
 # Define Scan Button Actions
