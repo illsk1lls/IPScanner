@@ -103,7 +103,9 @@ function List-Machines {
 	$BarText.Content = 'Resolving Remote Hostnames'
 
 	# Filter for Reachable or Stale states and select only IP and MAC address
-	$arpOutput = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress | Sort-Object -Property IPAddress
+	$arpInit = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress
+	$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
+	$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
 	$self = 0
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
 	
