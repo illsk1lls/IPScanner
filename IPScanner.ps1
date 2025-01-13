@@ -101,7 +101,11 @@ function waitForResponses {
 function List-Machines {
 	$Progress.Value = "0"
 	$BarText.Content = 'Resolving Remote Hostnames'
-
+	if($arpInit){
+		$arpInit.Clear()		
+		$arpConverted.Clear()
+		$arpOutput.Clear()
+	}
 	# Filter for Reachable or Stale states and select only IP and MAC address
 	$arpInit = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress
 	$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
@@ -279,7 +283,9 @@ $Scan.Add_MouseLeave({
 $Scan.Add_Click({
 	$BarText.Content = 'Getting localHost Info'
 	$Scan.IsEnabled = $false
-	$global:listview.Items.Clear()
+	if($listview.Items){
+		$listview.Items.Clear()
+	}
 	Update-Gui
 	Get-HostInfo
 	$Main.Title="$AppId `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
@@ -291,7 +297,9 @@ $Scan.Add_Click({
 })
 
 # Ensure clean ListView before launching
-$global:listview.Items.Clear()
+if($listview.Items){
+	$listview.Items.Clear()
+}
 
 # Show Window
 $Main.ShowDialog() | out-null
