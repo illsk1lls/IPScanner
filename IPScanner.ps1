@@ -67,7 +67,7 @@ function Get-MacVendor($mac) {
 	return (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
 }
 
-# Get ARP table ready and send out pings 
+# Get ARP table ready and refresh
 function Scan-Subnet {
 	$Progress.Value = 0
 	$BarText.Content = 'Sending Packets'
