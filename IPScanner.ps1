@@ -2,7 +2,7 @@
 Add-Type -MemberDefinition '[DllImport("User32.dll")]public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Namespace Win32 -Name Functions
 $closeConsoleUseGUI=[Win32.Functions]::ShowWindow((Get-Process -Id $PID).MainWindowHandle,0)
 
-# Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #76
+# Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #77
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
 	Start-Process Powershell "-nop -c `"iex ([io.file]::ReadAllText(`'$PSCommandPath`'))`"" -Verb RunAs
 	exit
@@ -55,11 +55,12 @@ function Get-HostInfo {
 	$global:domain = (Get-WmiObject -Class Win32_ComputerSystem).Domain
 
 	# Mark empty as Unknown
-	$SetFinalVar = @('hostName', 'externalIP', 'internalIP', 'adapter', 'subnetMask', 'gateway', 'domain')
-	foreach ($var in $SetFinalVar) {
-		Set-Variable -Name $var -Value (Get-Variable -Name $var -ErrorAction SilentlyContinue).Value ?? 'Unknown'
+	$markUnknown = @('hostName', 'externalIP', 'internalIP', 'adapter', 'subnetMask', 'gateway', 'domain')
+	foreach ($item in $markUnknown) {
+		if (-not (Get-Variable -Name $item -ValueOnly -ErrorAction SilentlyContinue)) {
+			Set-Variable -Name $item -Value 'Unknown' -Scope Global
+		}
 	}
-
 }
 
 function Get-MacVendor($mac) {
@@ -108,8 +109,13 @@ function List-Machines {
 	}
 	# Filter for Reachable or Stale states and select only IP and MAC address
 	$arpInit = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress
+
+	# Convert IP Addresses from string to int by each section
 	$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
+
+	# Sort by IP using [version] sorting
 	$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
+
 	$self = 0
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
 	
