@@ -115,7 +115,6 @@ function List-Machines {
 
 	# Sort by IP using [version] sorting
 	$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
-
 	$self = 0
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
 	
