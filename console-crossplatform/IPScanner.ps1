@@ -79,7 +79,13 @@ function List-Machines {
 	Write-Host "================================================================================================="
 
 	# Filter for Reachable or Stale states and select only IP and MAC address
-	$arpOutput = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress | Sort-Object -Property IPAddress
+	$arpInit = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress
+
+	# Convert IP Addresses from string to int by each section
+	$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
+
+	# Sort by IP using [version] sorting
+	$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
 	$self = 0
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
 	
@@ -91,10 +97,9 @@ function List-Machines {
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
 		$mac = $line.LinkLayerAddress.Replace('-',':')
-		$name = try {
-			([System.Net.Dns]::GetHostEntry($ip)).HostName
-		} catch {
-			"Unable to Resolve"
+		$name = (Resolve-DnsName -Name $ip -Server $gateway).NameHost
+		if(!($name)){ 
+			$name = "Unable to Resolve"
 		}
 		# Get Remote Device Vendor via Mac lookup
 		$tryVendor=(Get-MacVendor "$mac").Company
