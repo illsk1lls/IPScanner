@@ -13,7 +13,7 @@ function Get-HostInfo {
 	$ProgressPreference = 'Continue'
 	
 	# Find Gateway
-	$gateway = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1).NextHop
+	$global:gateway = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1).NextHop
 	$gatewayParts = $gateway -split '\.'
 	$global:gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts[2])."
 
