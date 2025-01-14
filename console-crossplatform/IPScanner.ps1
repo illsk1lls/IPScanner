@@ -97,10 +97,13 @@ function List-Machines {
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
 		$mac = $line.LinkLayerAddress.Replace('-',':')
-		$name = (Resolve-DnsName -Name $ip -Server $gateway).NameHost
-		if(!($name)){ 
-			$name = "Unable to Resolve"
+		$name = (Resolve-DnsName -Name $ip -Server $gateway -ErrorAction SilentlyContinue).NameHost
+
+		# Check if $name is null or empty since no DNS record was found
+  		if (!($name)) {
+  			$name = "Unable to Resolve"  
 		}
+  
 		# Get Remote Device Vendor via Mac lookup
 		$tryVendor=(Get-MacVendor "$mac").Company
 		$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(25, $tryVendor.Length))} else {'Unknown'}		
