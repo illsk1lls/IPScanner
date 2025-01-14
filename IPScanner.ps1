@@ -166,7 +166,7 @@ function Launch-WebInterfaceOrShare {
 
 	# Check if WebInterface exists HTTPS then HTTP
 	$TCPClientS = [System.Net.Sockets.TcpClient]::new()
-	$ResultS = $TCPClient.ConnectAsync($launch, 443).Wait(250)
+	$ResultS = $TCPClientS.ConnectAsync($launch, 443).Wait(250)
 	$TCPClientS.Close()
 	if(!($ResultS)){
 		$TCPClient = [System.Net.Sockets.TcpClient]::new()
