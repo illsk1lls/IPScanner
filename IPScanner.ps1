@@ -34,7 +34,7 @@ function Get-HostInfo {
 	$ProgressPreference = 'Continue'
 	
 	# Find Gateway
-	$gateway = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1).NextHop
+	$global:gateway = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1).NextHop
 	$gatewayParts = $gateway -split '\.'
 	$global:gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts[2])."
 
@@ -127,10 +127,9 @@ function List-Machines {
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
 		$mac = $line.LinkLayerAddress.Replace('-',':')
-		$name = try {
-			([System.Net.Dns]::GetHostEntry($ip)).HostName
-		} catch {
-			"Unable to Resolve"
+		$name = (Resolve-DnsName -Name $ip -Server $gateway).NameHost
+		if(!($name)){ 
+			$name = "Unable to Resolve"
 		}
 		# Get Remote Device Vendor via Mac lookup
 		$tryVendor=(Get-MacVendor "$mac").Company
