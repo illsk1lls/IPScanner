@@ -164,13 +164,17 @@ function Launch-WebInterfaceOrShare {
         [string]$selectedhost
     )
 	$launch = $selectedhost.Replace(' (This Device)','')
-	# Check if WebInterface exists
-	$TCPClient = [System.Net.Sockets.TcpClient]::new()
+
+	# Check if WebInterface exists HTTPS then HTTP
 	$TCPClientS = [System.Net.Sockets.TcpClient]::new()
-	$Result = $TCPClient.ConnectAsync($launch, 80).Wait(250)
 	$ResultS = $TCPClient.ConnectAsync($launch, 443).Wait(250)
-	$TCPClient.Close()
 	$TCPClientS.Close()
+	if(!($ResultS)){
+		$TCPClient = [System.Net.Sockets.TcpClient]::new()
+		$Result = $TCPClient.ConnectAsync($launch, 80).Wait(250)
+		$TCPClient.Close()		
+	}
+
 	# Priority order: HTTPS/HTTP/BrowseShare
 	if($ResultS -and $HostName -ne $launch) {
 		Start-Process "`"https://$launch`""
@@ -273,7 +277,11 @@ $Main.Add_Closing({[System.Windows.Forms.Application]::Exit();Stop-Process $pid}
 
 # Actions on ListItem Double-Click
 $listView.Add_MouseDoubleClick({
-	$selectedHost = $listView.SelectedItems.HostName
+	if($listView.SelectedItems.HostName -ne 'Unable to Resolve'){
+		$selectedHost = $listView.SelectedItems.HostName
+	} else {
+		$selectedHost = $listView.SelectedItems.IPaddress
+	}
 	Launch-WebInterfaceOrShare -selectedhost "$selectedHost"
 })
 
