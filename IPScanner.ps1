@@ -372,7 +372,12 @@ $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main
 
 # Set Title and Add Closing
 $Main.Title = "$AppId"
-$Main.Add_Closing({[System.Windows.Forms.Application]::Exit();Stop-Process $pid})
+$Main.Add_Closing({
+	$RunspacePool.Close()
+	$RunspacePool.Dispose()
+	[System.Windows.Forms.Application]::Exit()
+	Stop-Process $pid
+})
 
 # Actions on ListItem Double-Click
 $listView.Add_MouseDoubleClick({
