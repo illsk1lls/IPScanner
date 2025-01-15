@@ -318,11 +318,25 @@ function Launch-WebInterfaceOrShare {
 			</Style.Triggers>
 		</Style>
 		<Style x:Key="{x:Type ScrollBar}" TargetType="{x:Type ScrollBar}">
+			<Setter Property="Stylus.IsPressAndHoldEnabled" Value="True"/>
 			<Setter Property="Stylus.IsFlicksEnabled" Value="True" />
+			<Setter Property="Background" Value="#333333"/>
+			<Setter Property="Foreground" Value="#000000"/>
+			<Setter Property="BorderThickness" Value="1,0"/>
+			<Setter Property="BorderBrush" Value="#111111"/>
 			<Style.Triggers>
 				<Trigger Property="Orientation" Value="Vertical">
 					<Setter Property="Width" Value="10" />
+					<Setter Property="Height" Value="396" />
+					<Setter Property="MinHeight" Value="396" />					
 					<Setter Property="MinWidth" Value="10" />
+				</Trigger>
+				<Trigger Property="Orientation" Value="Horizontal">
+					<Setter Property="Width" Value="845" />
+					<Setter Property="Height" Value="8" />
+					<Setter Property="MinHeight" Value="8" />
+					<Setter Property="MinWidth" Value="845" />
+					<Setter Property="Margin" Value="-2,0,0,0" />
 				</Trigger>
 			</Style.Triggers>
 		</Style>
@@ -330,17 +344,17 @@ function Launch-WebInterfaceOrShare {
 	<Grid Margin="0,0,50,0">
 		<Button Name="Scan" Background="#000000" Foreground="#000000" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,9,0,0" Template="{StaticResource NoMouseOverButtonTemplate}">
 			<Grid>
-				<ProgressBar Name="Progress" Background="#777777" Value="0" Maximum="100" Width="775" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
+				<ProgressBar Name="Progress" Foreground="#FF00BFFF" Background="#777777" Value="0" Maximum="100" Width="775" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
 				<Label Name="BarText" Foreground="#000000" FontWeight="Bold" Content="Scan" Width="250" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
 			</Grid>
 		</Button>
 	   <ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
 			<ListView.View>
 				<GridView>
-					<GridViewColumn Header= "MAC Address" DisplayMemberBinding ="{Binding MACaddress}" Width="150"/>
-					<GridViewColumn Header= "Vendor" DisplayMemberBinding ="{Binding Vendor}" Width="250"/>
-					<GridViewColumn Header= "IP Address" DisplayMemberBinding ="{Binding IPaddress}" Width="140"/>
-					<GridViewColumn Header= "Host Name" DisplayMemberBinding ="{Binding HostName}" Width="300"/>
+					<GridViewColumn Header= "MAC Address" DisplayMemberBinding ="{Binding MACaddress}" Width="150" />
+					<GridViewColumn Header= "Vendor" DisplayMemberBinding ="{Binding Vendor}" Width="250" />
+					<GridViewColumn Header= "IP Address" DisplayMemberBinding ="{Binding IPaddress}" Width="140" />
+					<GridViewColumn Header= "Host Name" DisplayMemberBinding ="{Binding HostName}" Width="300" />
 				</GridView>
 			</ListView.View>
 		</ListView>
@@ -362,12 +376,18 @@ $Main.Add_Closing({[System.Windows.Forms.Application]::Exit();Stop-Process $pid}
 
 # Actions on ListItem Double-Click
 $listView.Add_MouseDoubleClick({
-	if($listView.SelectedItems.HostName -ne 'Unable to Resolve'){
-		$selectedHost = $listView.SelectedItems.HostName
-	} else {
-		$selectedHost = $listView.SelectedItems.IPaddress
+	if($listView.SelectedItems.IPaddress){
+		if($listView.SelectedItems.HostName -ne 'Unable to Resolve'){
+			$selectedHost = $listView.SelectedItems.HostName
+		} else {
+			$selectedHost = $listView.SelectedItems.IPaddress
+		}
+		Launch-WebInterfaceOrShare -selectedhost "$selectedHost"
 	}
-	Launch-WebInterfaceOrShare -selectedhost "$selectedHost"
+})
+
+$listView.Add_MouseLeftButtonDown({
+	$listView.SelectedItems.Clear()
 })
 
 # Define Scan Button Actions
