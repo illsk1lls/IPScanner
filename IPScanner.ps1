@@ -6,7 +6,8 @@ $closeConsoleUseGUI=[Win32.Functions]::ShowWindow((Get-Process -Id $PID).MainWin
 $reLaunchInProgress=$args[0]
 
 ### ADMIN REQUEST SECTION - START ### This is a merge of two functions that both require relaunch. 1) Admin request 2) Adjusting console type momentarily to ensure the console can be hidden
-if($reLaunchInProgress -ne 'TerminalSet'){
+if($reLaunchInProgress -ne '-TerminalSet'){
+	$arguments = "& '" + $myinvocation.mycommand.definition + "' -TerminalSet"
 	# This section is required to hide the console window on Win 11
 	if((Get-WmiObject -Class Win32_OperatingSystem).Caption -match "Windows 11") {
 		# Define console types
@@ -32,10 +33,10 @@ if($reLaunchInProgress -ne 'TerminalSet'){
 			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $legacy
 			if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
 				# Relaunch with temp console settings WITH Admin request - the only task Admin is required for is line #121 to clear ARP cache
-				CMD /c START /MIN /HIGH "" POWERSHELL -nop -file "$PSCommandPath" TerminalSet
+				Start-Process powershell -Verb runAs -ArgumentList $arguments
 			} else {
 				# Relaunch with temp console settings WITHOUT Admin request
-				CMD /c START /MIN "" POWERSHELL -nop -file "$PSCommandPath" TerminalSet
+				Start-Process powershell -ArgumentList $arguments
 			}
 			# Switch back console settings to original state and exit console window that was using those settings
 			if($defaultConsole -eq $terminal) {
@@ -46,6 +47,13 @@ if($reLaunchInProgress -ne 'TerminalSet'){
 				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $defaultConsole
 			}
 			exit
+		} else {
+			# Console settings are already correct, relaunch only if not Admin
+			if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+				# Relaunch with temp console settings WITH Admin request - the only task Admin is required for is line #121 to clear ARP cache
+				Start-Process powershell -Verb runAs -ArgumentList $arguments
+				exit
+			}
 		}
 	}
 }
