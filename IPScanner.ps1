@@ -5,9 +5,7 @@ $closeConsoleUseGUI=[Win32.Functions]::ShowWindow((Get-Process -Id $PID).MainWin
 # Check if relaunching to correct terminal type
 $reLaunchInProgress=$args[0]
 
-### ADMIN REQUEST SECTION - START ### This is a merge of two functions that both require relaunch. 1) Admin request 2) Adjusting console type momentarily to ensure the console can be hidden
 if($reLaunchInProgress -ne '-TerminalSet'){
-	$arguments = "& '" + $myinvocation.mycommand.definition + "' -TerminalSet"
 	# This section is required to hide the console window on Win 11
 	if((Get-WmiObject -Class Win32_OperatingSystem).Caption -match "Windows 11") {
 		# Define console types
@@ -31,13 +29,10 @@ if($reLaunchInProgress -ne '-TerminalSet'){
 			# Switch to compatible console settings
 			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $legacy
 			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $legacy
-			if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-				# Relaunch with temp console settings WITH Admin request - the only task Admin is required for is line #121 to clear ARP cache
-				Start-Process powershell -Verb runAs -ArgumentList $arguments
-			} else {
-				# Relaunch with temp console settings WITHOUT Admin request
-				Start-Process powershell -ArgumentList $arguments
-			}
+			
+			# Relaunch with temp console settings
+			CMD /c START /MIN "" POWERSHELL -nop -file "$PSCommandPath" -TerminalSet
+
 			# Switch back console settings to original state and exit console window that was using those settings
 			if($defaultConsole -eq $terminal) {
 				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $terminal
@@ -47,17 +42,9 @@ if($reLaunchInProgress -ne '-TerminalSet'){
 				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $defaultConsole
 			}
 			exit
-		} else {
-			# Console settings are already correct, relaunch only if not Admin
-			if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-				# Relaunch with temp console settings WITH Admin request - the only task Admin is required for is line #121 to clear ARP cache
-				Start-Process powershell -Verb runAs -ArgumentList $arguments
-				exit
-			}
 		}
 	}
 }
-### ADMIN REQUEST SECTION - END ###
 
 # Allow Single Instance Only
 $AppId = 'Simple IP Scanner'
@@ -124,9 +111,6 @@ function Scan-Subnet {
 	$Progress.Value = 0
 	$BarText.Content = 'Sending Packets'
 	Update-uiMain
-
-	# Clear ARP cache - Requires Admin
-	Remove-NetNeighbor -InterfaceAlias "$adapter" -AsJob -Confirm:$false | Out-Null
 
 	# Ping Entire Subnet
 	for ($i = 1; $i -le 254; $i++) {
