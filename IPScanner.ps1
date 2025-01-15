@@ -31,7 +31,7 @@ if($reLaunchInProgress -ne 'TerminalSet'){
 			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $legacy
 			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $legacy
 			if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-				# Relaunch with temp console settings WITH Admin request - the only task Admin is required for is line #120 to clear ARP cache
+				# Relaunch with temp console settings WITH Admin request - the only task Admin is required for is line #121 to clear ARP cache
 				CMD /c START /MIN /HIGH "" POWERSHELL -nop -file "$PSCommandPath" TerminalSet
 			} else {
 				# Relaunch with temp console settings WITHOUT Admin request
@@ -61,12 +61,17 @@ if (-not $singleInstance){
 	Exit
 }
 
-# Host info used to determine correct subnet to scan via Gateway prefix
-function Get-HostInfo {
-	# Hostname
-	$global:hostName = hostName
+# GUI Main Dispatcher
+function Update-uiMain(){
+	$Main.Dispatcher.Invoke([Windows.Threading.DispatcherPriority]::Background, [action]{})
+}
 
-	# Check Internet Connection and Get External IP
+# Get host machine information
+function Get-HostInfo {
+	# Get Hostname
+	$global:hostName = hostname
+
+	# Check internet connection and get external IP
 	$ProgressPreference = 'SilentlyContinue'
 	$hotspotRedirectionTest = irm "http://www.msftncsi.com/ncsi.txt"
 	$global:externalIP = if ($hotspotRedirectionTest -eq "Microsoft NCSI") { 
@@ -76,25 +81,25 @@ function Get-HostInfo {
 	}
 	$ProgressPreference = 'Continue'
 	
-	# Find Gateway
+	# Find my gateway
 	$global:gateway = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1).NextHop
 	$gatewayParts = $gateway -split '\.'
 	$global:gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts[2])."
 
-	# Internal IP
+	# Get my Internal IP
 	$global:internalIP = (Get-NetIPAddress | Where-Object {$_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -ne 'Loopback Pseudo-Interface 1' -and ($_.IPAddress -like "$gatewayPrefix*")}).IPAddress
 
-	# Host adapter type
+	# Get current adapter type
 	$global:adapter = (Get-NetIPAddress -InterfaceAlias "*Ethernet*","*Wi-Fi*" -AddressFamily IPv4 | Where-Object { $_.IPAddress -like "$gatewayPrefix*" }).InterfaceAlias
 
-	# My Mac
+	# Get my mac
 	$global:myMac = (Get-NetAdapter -Name $adapter).MacAddress.Replace('-',':')
 
 	# Convert subnet prefix to readable number
 	$prefixLength = (Get-NetIPAddress | Where-Object {$_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -ne 'Loopback Pseudo-Interface 1'} | Select-Object -First 1).PrefixLength
 	$subnetMask = ([System.Net.IPAddress]::Parse(($([Math]::Pow(2, $prefixLength)) - 1) * [Math]::Pow(2, 32 - $prefixLength))).GetAddressBytes() -join "."
 
-	# Domain
+	# Get domain
 	$global:domain = (Get-WmiObject -Class Win32_ComputerSystem).Domain
 
 	# Mark empty as Unknown
@@ -106,16 +111,12 @@ function Get-HostInfo {
 	}
 }
 
-function Get-MacVendor($mac) {
-	# Get Vendor via Mac (thanks to u/mprz)
-	return (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
-}
-
-# Get ARP table ready and refresh
+# Send packets across subnet
 function Scan-Subnet {
 	$Progress.Value = 0
 	$BarText.Content = 'Sending Packets'
-
+	Update-uiMain
+		
 	# Clear ARP cache - Requires Admin
 	Remove-NetNeighbor -InterfaceAlias "$adapter" -AsJob -Confirm:$false | Out-Null
 
@@ -123,88 +124,135 @@ function Scan-Subnet {
 	for ($i = 1; $i -le 254; $i++) {
 		Test-Connection $gatewayPrefix$i -Count 1 -AsJob | Out-Null
 		$Progress.Value = ($i * (100 / 254))
-		Start-Sleep -Milliseconds 10
-		Update-Gui
+		Update-uiMain
+		Start-Sleep -Milliseconds 15
 	}
+	$Progress.Value = 100
+	Update-uiMain
 }
 
-# Give machines time to respond
+# Give peers time to respond
 function waitForResponses {
 	$Progress.Value = 0
 	$BarText.Content = 'Listening'
-
-	# Wait with progress
+	Update-uiMain
+	
 	for ($i = 1; $i -le 100; $i++) {
 		$Progress.Value = $i
-		Update-Gui
-		Start-Sleep -Milliseconds 150
+		Update-uiMain
+		Start-Sleep -Milliseconds 165
 	}
+	$Progress.Value = 100
+	Update-uiMain
 }
 
-# Build ListView
-function List-Machines {
-	$Progress.Value = "0"
-	$BarText.Content = 'Resolving Remote Hostnames'
-	if($arpInit){
-		$arpInit.Clear()		
-		$arpConverted.Clear()
-		$arpOutput.Clear()
-	}
-	# Filter for Reachable or Stale states and select only IP and MAC address
-	$arpInit = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress
+# Initialize RunspacePool
+$SessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+$RunspacePool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $SessionState, $Host)
+$RunspacePool.Open()
 
-	# Convert IP Addresses from string to int by each section
-	$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
+# List peers
+function scanProcess {
+	$PowerShell = [powershell]::Create().AddScript({
+		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac)
 
-	# Sort by IP using [version] sorting
-	$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
-	$self = 0
-	$myLastOctet = [int]($internalIP -split '\.')[-1]
-	
-	# Get My Vendor via Mac lookup
-	$tryMyVendor = (Get-MacVendor "$myMac").Company
-	$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unknown'}
-
-	# Cycle through ARP table
-	foreach ($line in $arpOutput) {
-		$ip = $line.IPAddress
-		$mac = $line.LinkLayerAddress.Replace('-',':')
-		$name = (Resolve-DnsName -Name $ip -Server $gateway -ErrorAction SilentlyContinue).NameHost
-
-		# Check if $name is null or empty since no DNS record was found
-  		if (!($name)) {
-  			$name = "Unable to Resolve"  
+		function Update-UI {
+			param($action)
+			$Main.Dispatcher.Invoke([action]$action, [Windows.Threading.DispatcherPriority]::Background)
 		}
-  
-		# Get Remote Device Vendor via Mac lookup
-		$tryVendor=(Get-MacVendor "$mac").Company
-		$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(35, $tryVendor.Length))} else {'Unknown'}		
 
-		# Format and display
-		$lastOctet = [int]($ip -split '\.')[-1]
-		if ($myLastOctet -gt $lastOctet) {
-			$listView.items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}) | Out-Null
-			Update-Gui
-		} else {
-			if ($self -ge 1) {
-				$listView.items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}) | Out-Null
-				Update-Gui
-			} else {
-				$listView.items.Add([pscustomobject]@{'MACaddress'="$myMac";'Vendor'="$myVendor";'IPaddress'="$internalIP";'HostName'="$hostName (This Device)"}) | Out-Null
-				Update-Gui
-				$listView.items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}) | Out-Null
-				Update-Gui
-				$self++
+		function Get-MacVendor($mac) {
+			# Get Vendor via Mac (thanks to u/mprz)
+			return (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
+		}
+
+		function List-Machines {
+			Update-UI { 
+				$Progress.Value = "0"
+				$BarText.Content = 'Resolving Remote Hostnames'
+			}
+			
+			if($arpInit){
+				$arpInit.Clear()		
+				$arpConverted.Clear()
+				$arpOutput.Clear()
+			}
+			# Filter for Reachable or Stale states and select only IP and MAC address
+			$arpInit = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress
+
+			# Convert IP Addresses from string to int by each section
+			$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
+
+			# Sort by IP using [version] sorting
+			$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
+			$self = 0
+			$myLastOctet = [int]($internalIP -split '\.')[-1]
+			
+			# Get My Vendor via Mac lookup
+			$tryMyVendor = (Get-MacVendor "$myMac").Company
+			$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unknown'}
+
+			# Cycle through ARP table
+			$i = 0
+			$totalItems = $arpOutput.Count - 1
+			foreach ($line in $arpOutput) {
+				$ip = $line.IPAddress
+				$mac = $line.LinkLayerAddress.Replace('-',':')
+				$name = (Resolve-DnsName -Name $ip -Server $gateway -ErrorAction SilentlyContinue).NameHost
+
+				# Check if $name is null or empty since no DNS record was found
+				if (!($name)) {
+					$name = "Unable to Resolve"	 
+				}
+		  
+				# Get Remote Device Vendor via Mac lookup
+				$tryVendor=(Get-MacVendor "$mac").Company
+				$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(35, $tryVendor.Length))} else {'Unknown'}		
+
+				# Format and display
+				$lastOctet = [int]($ip -split '\.')[-1]
+				if ($myLastOctet -gt $lastOctet) {
+					Update-UI { 
+						$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
+						$Progress.Value = ($i * (100 / $totalItems))
+					}
+				} else {
+					if ($self -ge 1) {
+						Update-UI { 
+							$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
+							$Progress.Value = ($i * (100 / $totalItems))
+						}
+					} else {
+						Update-UI { 
+							if ($i -eq 0) { $listView.Items.Clear() }  # Clear only once at the start
+							$listView.Items.Add([pscustomobject]@{'MACaddress'="$myMac";'Vendor'="$myVendor";'IPaddress'="$internalIP";'HostName'="$hostName (This Device)"})
+							$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
+							$Progress.Value = ($i * (100 / $totalItems))
+						}
+						$self++
+					}
+				}
+				$i++
 			}
 		}
-	}
+		List-Machines
+		Update-UI {
+			# Reset Scan button
+			$BarText.Content = 'Scan'
+			$Scan.IsEnabled = $true
+			$Progress.Value = 0
+		}
+	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac)
+	
+	$PowerShell.RunspacePool = $RunspacePool
+	$job = $PowerShell.BeginInvoke()
 }
 
 # Launch selected item in browser or file explorer
 function Launch-WebInterfaceOrShare {
-    param (
-        [string]$selectedhost
-    )
+	param (
+		[string]$selectedhost
+	)
 	$launch = $selectedhost.Replace(' (This Device)','')
 
 	# Check if WebInterface exists HTTPS then HTTP
@@ -225,11 +273,6 @@ function Launch-WebInterfaceOrShare {
 	} else {
 		&explorer "`"\\$launch`""
 	}
-}
-
-# No multi-threading in this version ;(
-function Update-Gui(){
-	$Main.Dispatcher.Invoke([Windows.Threading.DispatcherPriority]::Background, [action]{})
 }
 
 # Define WPF GUI Structure
@@ -255,9 +298,9 @@ function Update-Gui(){
 			<Setter Property="Foreground" Value="#EEEEEE"/>
 			<Setter Property="FontWeight" Value="Normal"/>
 			<Style.Triggers>
-				<Trigger Property="ItemsControl.AlternationIndex" Value="1">                            
+				<Trigger Property="ItemsControl.AlternationIndex" Value="1">							
 					<Setter Property="Background" Value="#000000"/>
-					<Setter Property="Foreground" Value="#EEEEEE"/>                                
+					<Setter Property="Foreground" Value="#EEEEEE"/>								   
 				</Trigger>
 				<Trigger Property="IsMouseOver" Value="True">
 					<Setter Property="Background" Value="Transparent" />
@@ -339,19 +382,17 @@ $Scan.Add_MouseLeave({
 })
 
 $Scan.Add_Click({
-	$BarText.Content = 'Getting localHost Info'
 	$Scan.IsEnabled = $false
-	if($listview.Items){
-		$listview.Items.Clear()
-	}
-	Update-Gui
+	$listView.Items.Clear()
+	$BarText.Content = 'Getting localHost Info' 
+	Update-uiMain
 	Get-HostInfo
 	$Main.Title="$AppId `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
+	Update-uiMain
 	Scan-Subnet
 	waitForResponses
-	List-Machines
-	$BarText.Content = 'Scan'
-	$Scan.IsEnabled = $true
+	scanProcess
+	Update-uiMain
 })
 
 # Ensure clean ListView before launching
