@@ -29,7 +29,7 @@ if($reLaunchInProgress -ne '-TerminalSet'){
 			# Switch to compatible console settings
 			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $legacy
 			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $legacy
-			
+
 			# Relaunch with temp console settings
 			CMD /c START /MIN "" POWERSHELL -nop -file "$PSCommandPath" -TerminalSet
 
@@ -106,36 +106,35 @@ function Get-HostInfo {
 	}
 }
 
+function Update-Progress {
+	param ($value, $text)
+	$Progress.Value = $value
+	$BarText.Content = $text
+	Update-uiMain
+}
+
 # Send packets across subnet
 function Scan-Subnet {
-	$Progress.Value = 0
-	$BarText.Content = 'Sending Packets'
-	Update-uiMain
+	Update-Progress 0 'Sending Packets'
 
 	# Ping Entire Subnet
-	for ($i = 1; $i -le 254; $i++) {
-		Test-Connection $gatewayPrefix$i -Count 1 -AsJob | Out-Null
-		$Progress.Value = ($i * (100 / 254))
-		Update-uiMain
+	1..254 | ForEach-Object {
+		Test-Connection -ComputerName "$gatewayPrefix$_" -Count 1 -AsJob | Out-Null
+		Update-Progress ($_ * (100 / 254)) 'Sending Packets'
 		Start-Sleep -Milliseconds 15
 	}
-	$Progress.Value = 100
-	Update-uiMain
+	Update-Progress 100 'Sending Packets'
 }
 
 # Give peers time to respond
 function waitForResponses {
-	$Progress.Value = 0
-	$BarText.Content = 'Listening'
-	Update-uiMain
+	Update-Progress 0 'Listening'
 
-	for ($i = 1; $i -le 100; $i++) {
-		$Progress.Value = $i
-		Update-uiMain
+	1..100 | ForEach-Object {
+		Update-Progress $_ 'Listening'
 		Start-Sleep -Milliseconds 165
 	}
-	$Progress.Value = 100
-	Update-uiMain
+	Update-Progress 100 'Listening'
 }
 
 # Initialize RunspacePool
@@ -148,7 +147,7 @@ function scanProcess {
 	$PowerShell = [powershell]::Create().AddScript({
 		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac)
 
-		function Update-UI {
+		function Update-uiBackground{
 			param($action)
 			$Main.Dispatcher.Invoke([action]$action, [Windows.Threading.DispatcherPriority]::Background)
 		}
@@ -159,7 +158,7 @@ function scanProcess {
 		}
 
 		function List-Machines {
-			Update-UI {
+			Update-uiBackground{
 				$Progress.Value = "0"
 				$BarText.Content = 'Resolving Remote Hostnames'
 			}
@@ -204,18 +203,18 @@ function scanProcess {
 				# Format and display
 				$lastOctet = [int]($ip -split '\.')[-1]
 				if ($myLastOctet -gt $lastOctet) {
-					Update-UI {
+					Update-uiBackground{
 						$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
 						$Progress.Value = ($i * (100 / $totalItems))
 					}
 				} else {
 					if ($self -ge 1) {
-						Update-UI {
+						Update-uiBackground{
 							$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
 							$Progress.Value = ($i * (100 / $totalItems))
 						}
 					} else {
-						Update-UI {
+						Update-uiBackground{
 							if ($i -eq 0) { $listView.Items.Clear() }  # Clear only once at the start
 							$listView.Items.Add([pscustomobject]@{'MACaddress'="$myMac";'Vendor'="$myVendor";'IPaddress'="$internalIP";'HostName'="$hostName (This Device)"})
 							$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
@@ -228,7 +227,7 @@ function scanProcess {
 			}
 		}
 		List-Machines
-		Update-UI {
+		Update-uiBackground{
 			# Reset Scan button
 			$BarText.Content = 'Scan'
 			$Scan.IsEnabled = $true
