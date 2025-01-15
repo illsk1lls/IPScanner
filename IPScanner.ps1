@@ -14,16 +14,16 @@ if($reLaunchInProgress -ne 'TerminalSet'){
 		$letWin='{00000000-0000-0000-0000-000000000000}' # This is the default for Win 11
 		$terminal='{2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}' # This is the first part of "New Terminal"
 		$terminal2='{E12CFF52-A866-4C77-9A90-F570A7AA2C6B}' # This key is also required for "New Terminal"
-		
+
 		# On brand new Windows installations, if a console window has never been opened this value doesn't exist. Set to default if not present (Simulate 1st console open)
 		if(!(Get-ItemProperty 'HKCU:\Console\%%Startup').PSObject.Properties.Name -contains 'DelegationConsole'){
 			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $letWin
 			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $letWin
 		}
-		
+
 		# Store current console settings
 		$currentConsole=Get-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole'
-		
+
 		# Check if compatible console is selected
 		if($currentConsole.DelegationConsole -ne $legacy) {
 			$defaultConsole=$currentConsole.DelegationConsole
@@ -74,13 +74,13 @@ function Get-HostInfo {
 	# Check internet connection and get external IP
 	$ProgressPreference = 'SilentlyContinue'
 	$hotspotRedirectionTest = irm "http://www.msftncsi.com/ncsi.txt"
-	$global:externalIP = if ($hotspotRedirectionTest -eq "Microsoft NCSI") { 
+	$global:externalIP = if ($hotspotRedirectionTest -eq "Microsoft NCSI") {
 		irm "http://ifconfig.me/ip"
-	} else { 
+	} else {
 		"No Internet or Redirection"
 	}
 	$ProgressPreference = 'Continue'
-	
+
 	# Find my gateway
 	$global:gateway = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1).NextHop
 	$gatewayParts = $gateway -split '\.'
@@ -116,7 +116,7 @@ function Scan-Subnet {
 	$Progress.Value = 0
 	$BarText.Content = 'Sending Packets'
 	Update-uiMain
-		
+
 	# Clear ARP cache - Requires Admin
 	Remove-NetNeighbor -InterfaceAlias "$adapter" -AsJob -Confirm:$false | Out-Null
 
@@ -136,7 +136,7 @@ function waitForResponses {
 	$Progress.Value = 0
 	$BarText.Content = 'Listening'
 	Update-uiMain
-	
+
 	for ($i = 1; $i -le 100; $i++) {
 		$Progress.Value = $i
 		Update-uiMain
@@ -167,13 +167,13 @@ function scanProcess {
 		}
 
 		function List-Machines {
-			Update-UI { 
+			Update-UI {
 				$Progress.Value = "0"
 				$BarText.Content = 'Resolving Remote Hostnames'
 			}
-			
+
 			if($arpInit){
-				$arpInit.Clear()		
+				$arpInit.Clear()
 				$arpConverted.Clear()
 				$arpOutput.Clear()
 			}
@@ -187,7 +187,7 @@ function scanProcess {
 			$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
 			$self = 0
 			$myLastOctet = [int]($internalIP -split '\.')[-1]
-			
+
 			# Get My Vendor via Mac lookup
 			$tryMyVendor = (Get-MacVendor "$myMac").Company
 			$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unknown'}
@@ -202,28 +202,28 @@ function scanProcess {
 
 				# Check if $name is null or empty since no DNS record was found
 				if (!($name)) {
-					$name = "Unable to Resolve"	 
+					$name = "Unable to Resolve"
 				}
-		  
+
 				# Get Remote Device Vendor via Mac lookup
 				$tryVendor=(Get-MacVendor "$mac").Company
-				$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(35, $tryVendor.Length))} else {'Unknown'}		
+				$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(35, $tryVendor.Length))} else {'Unknown'}
 
 				# Format and display
 				$lastOctet = [int]($ip -split '\.')[-1]
 				if ($myLastOctet -gt $lastOctet) {
-					Update-UI { 
+					Update-UI {
 						$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
 						$Progress.Value = ($i * (100 / $totalItems))
 					}
 				} else {
 					if ($self -ge 1) {
-						Update-UI { 
+						Update-UI {
 							$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
 							$Progress.Value = ($i * (100 / $totalItems))
 						}
 					} else {
-						Update-UI { 
+						Update-UI {
 							if ($i -eq 0) { $listView.Items.Clear() }  # Clear only once at the start
 							$listView.Items.Add([pscustomobject]@{'MACaddress'="$myMac";'Vendor'="$myVendor";'IPaddress'="$internalIP";'HostName'="$hostName (This Device)"})
 							$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
@@ -243,7 +243,7 @@ function scanProcess {
 			$Progress.Value = 0
 		}
 	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac)
-	
+
 	$PowerShell.RunspacePool = $RunspacePool
 	$job = $PowerShell.BeginInvoke()
 }
@@ -262,14 +262,14 @@ function Launch-WebInterfaceOrShare {
 	if(!($ResultS)){
 		$TCPClient = [System.Net.Sockets.TcpClient]::new()
 		$Result = $TCPClient.ConnectAsync($launch, 80).Wait(250)
-		$TCPClient.Close()		
+		$TCPClient.Close()
 	}
 
 	# Priority order: HTTPS/HTTP/BrowseShare
 	if($ResultS -and $HostName -ne $launch) {
 		Start-Process "`"https://$launch`""
 	} elseif($Result -and $HostName -ne $launch) {
-		Start-Process "`"http://$launch`""	
+		Start-Process "`"http://$launch`""
 	} else {
 		&explorer "`"\\$launch`""
 	}
@@ -298,14 +298,14 @@ function Launch-WebInterfaceOrShare {
 			<Setter Property="Foreground" Value="#EEEEEE"/>
 			<Setter Property="FontWeight" Value="Normal"/>
 			<Style.Triggers>
-				<Trigger Property="ItemsControl.AlternationIndex" Value="1">							
+				<Trigger Property="ItemsControl.AlternationIndex" Value="1">
 					<Setter Property="Background" Value="#000000"/>
-					<Setter Property="Foreground" Value="#EEEEEE"/>								   
+					<Setter Property="Foreground" Value="#EEEEEE"/>
 				</Trigger>
 				<Trigger Property="IsMouseOver" Value="True">
 					<Setter Property="Background" Value="Transparent" />
 					<Setter Property="BorderBrush" Value="#333333" />
-				</Trigger>				
+				</Trigger>
 				<MultiTrigger>
 					<MultiTrigger.Conditions>
 						<Condition Property="IsSelected" Value="true" />
@@ -328,7 +328,7 @@ function Launch-WebInterfaceOrShare {
 				<Trigger Property="Orientation" Value="Vertical">
 					<Setter Property="Width" Value="10" />
 					<Setter Property="Height" Value="396" />
-					<Setter Property="MinHeight" Value="396" />					
+					<Setter Property="MinHeight" Value="396" />
 					<Setter Property="MinWidth" Value="10" />
 				</Trigger>
 				<Trigger Property="Orientation" Value="Horizontal">
@@ -340,7 +340,7 @@ function Launch-WebInterfaceOrShare {
 				</Trigger>
 			</Style.Triggers>
 		</Style>
-	</Window.Resources>		
+	</Window.Resources>
 	<Grid Margin="0,0,50,0">
 		<Button Name="Scan" Background="#000000" Foreground="#000000" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,9,0,0" Template="{StaticResource NoMouseOverButtonTemplate}">
 			<Grid>
@@ -359,13 +359,22 @@ function Launch-WebInterfaceOrShare {
 			</ListView.View>
 		</ListView>
 	</Grid>
+	<Window.Triggers>
+		<EventTrigger RoutedEvent="Loaded">
+			<BeginStoryboard>
+				<Storyboard Duration="00:00:1" Storyboard.TargetProperty="Opacity">
+					<DoubleAnimation From="0" To="1"/>
+				</Storyboard>
+			</BeginStoryboard>
+		</EventTrigger>
+	</Window.Triggers>
 </Window>
 '@
 
 # Load XAML
-$reader = (New-Object System.Xml.XmlNodeReader $xaml) 
+$reader = (New-Object System.Xml.XmlNodeReader $xaml)
 try{$Main = [Windows.Markup.XamlReader]::Load( $reader )}
-catch{$shell = New-Object -ComObject Wscript.Shell; $shell.Popup("Unable to load GUI!",0,'ERROR:',0x0) | Out-Null; Exit}
+catch{$shell = New-Object -ComObject Wscript.Shell; $shell.Popup("Unable to load GUI, XAML Error!",0,'ERROR:',0x0) | Out-Null; Exit}
 
 # Store Form Objects In PowerShell
 $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main.FindName($_.Name)}
@@ -404,7 +413,7 @@ $Scan.Add_MouseLeave({
 $Scan.Add_Click({
 	$Scan.IsEnabled = $false
 	$listView.Items.Clear()
-	$BarText.Content = 'Getting localHost Info' 
+	$BarText.Content = 'Getting localHost Info'
 	Update-uiMain
 	Get-HostInfo
 	$Main.Title="$AppId `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
