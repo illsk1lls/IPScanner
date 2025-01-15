@@ -2,11 +2,54 @@
 Add-Type -MemberDefinition '[DllImport("User32.dll")]public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Namespace Win32 -Name Functions
 $closeConsoleUseGUI=[Win32.Functions]::ShowWindow((Get-Process -Id $PID).MainWindowHandle,0)
 
-# Generate Admin request. Admin required to clear ARP cache for fresh network list - this is the only task it is required for, line #77
-if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-	Start-Process Powershell "-nop -c `"iex ([io.file]::ReadAllText(`'$PSCommandPath`'))`"" -Verb RunAs
-	exit
+# Check if relaunching to correct terminal type
+$reLaunchInProgress=$args[0]
+
+### ADMIN REQUEST SECTION - START ### This is a merge of two functions that both require relaunch. 1) Admin request 2) Adjusting console type momentarily to ensure the console can be hidden
+if($reLaunchInProgress -ne 'TerminalSet'){
+	# This section is required to hide the console window on Win 11
+	if((Get-WmiObject -Class Win32_OperatingSystem).Caption -match "Windows 11") {
+		# Define console types
+		$legacy='{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}' # This is the legacy console we all know, and can control
+		$letWin='{00000000-0000-0000-0000-000000000000}' # This is the default for Win 11
+		$terminal='{2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}' # This is the first part of "New Terminal"
+		$terminal2='{E12CFF52-A866-4C77-9A90-F570A7AA2C6B}' # This key is also required for "New Terminal"
+		
+		# On brand new Windows installations, if a console window has never been opened this value doesn't exist. Set to default if not present (Simulate 1st console open)
+		if(!(Get-ItemProperty 'HKCU:\Console\%%Startup').PSObject.Properties.Name -contains 'DelegationConsole'){
+			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $letWin
+			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $letWin
+		}
+		
+		# Store current console settings
+		$currentConsole=Get-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole'
+		
+		# Check if compatible console is selected
+		if($currentConsole.DelegationConsole -ne $legacy) {
+			$defaultConsole=$currentConsole.DelegationConsole
+			# Switch to compatible console settings
+			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $legacy
+			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $legacy
+			if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+				# Relaunch with temp console settings WITH Admin request - the only task Admin is required for is line #120 to clear ARP cache
+				CMD /c START /MIN /HIGH "" POWERSHELL -nop -file "$PSCommandPath" TerminalSet
+			} else {
+				# Relaunch with temp console settings WITHOUT Admin request
+				CMD /c START /MIN "" POWERSHELL -nop -file "$PSCommandPath" TerminalSet
+			}
+			# Switch back console settings to original state and exit console window that was using those settings
+			if($defaultConsole -eq $terminal) {
+				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $terminal
+				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $terminal2
+			} else {
+				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $defaultConsole
+				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $defaultConsole
+			}
+			exit
+		}
+	}
 }
+### ADMIN REQUEST SECTION - END ###
 
 # Allow Single Instance Only
 $AppId = 'Simple IP Scanner'
