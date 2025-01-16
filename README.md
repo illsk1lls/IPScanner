@@ -1,4 +1,5 @@
-<h1 align="center">Simple IP Scanner - A Powershell Network Scanner (w/CMD Launcher)</h1>
+<h1 align="center">Simple IP Scanner - A Powershell Network Scanner</h1>
+*<sup>(w/CMD Launcher)</sup>*
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/IPScanner.png?raw=true"></p>
 
