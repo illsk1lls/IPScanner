@@ -1,50 +1,41 @@
+<# :: Hybrid CMD / Powershell Launcher
+@ECHO OFF
+SET "LEGACY={B23D10C0-E52E-411E-9D5B-C09FDF709C7D}"&SET "LETWIN={00000000-0000-0000-0000-000000000000}"&SET "TERMINAL={2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}"&SET "TERMINAL2={E12CFF52-A866-4C77-9A90-F570A7AA2C6B}"
+POWERSHELL -nop -c "Get-WmiObject -Class Win32_OperatingSystem | Select -ExpandProperty Caption | Find 'Windows 11'">nul
+IF ERRORLEVEL 0 (
+	SET isEleven=1
+	>nul 2>&1 REG QUERY "HKCU\Console\%%%%Startup" /v DelegationConsole
+	IF ERRORLEVEL 1 (
+		REG ADD "HKCU\Console\%%%%Startup" /v DelegationConsole /t REG_SZ /d "%LETWIN%" /f>nul
+		REG ADD "HKCU\Console\%%%%Startup" /v DelegationTerminal /t REG_SZ /d "%LETWIN%" /f>nul
+	)
+	FOR /F "usebackq tokens=3" %%# IN (`REG QUERY "HKCU\Console\%%%%Startup" /v DelegationConsole 2^>nul`) DO (
+		IF NOT "%%#"=="%LEGACY%" (
+			SET "DEFAULTCONSOLE=%%#"
+			REG ADD "HKCU\Console\%%%%Startup" /v DelegationConsole /t REG_SZ /d "%LEGACY%" /f>nul
+			REG ADD "HKCU\Console\%%%%Startup" /v DelegationTerminal /t REG_SZ /d "%LEGACY%" /f>nul
+		)
+	)
+)
+START /MIN "" POWERSHELL -nop -c "iex ([io.file]::ReadAllText('%~f0'))">nul
+IF "%isEleven%"=="1" (
+	IF DEFINED DEFAULTCONSOLE (
+		IF "%DEFAULTCONSOLE%"=="%TERMINAL%" (
+			REG ADD "HKCU\Console\%%%%Startup" /v DelegationConsole /t REG_SZ /d "%TERMINAL%" /f>nul
+			REG ADD "HKCU\Console\%%%%Startup" /v DelegationTerminal /t REG_SZ /d "%TERMINAL2%" /f>nul
+		) ELSE (
+			REG ADD "HKCU\Console\%%%%Startup" /v DelegationConsole /t REG_SZ /d "%DEFAULTCONSOLE%" /f>nul
+			REG ADD "HKCU\Console\%%%%Startup" /v DelegationTerminal /t REG_SZ /d "%DEFAULTCONSOLE%" /f>nul
+		)
+	)
+)
+EXIT
+#>$PSCommandPath=$PSCommandPath.Replace("/\.[^/.]+$/", ".cmd") | Out-Null
+###POWERSHELL BELOW THIS LINE###
+
 # Hide Console - Show GUI Only
 Add-Type -MemberDefinition '[DllImport("User32.dll")]public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Namespace Win32 -Name Functions
 $closeConsoleUseGUI=[Win32.Functions]::ShowWindow((Get-Process -Id $PID).MainWindowHandle,0)
-
-# Check if relaunching to correct terminal type
-$reLaunchInProgress=$args[0]
-
-if($reLaunchInProgress -ne '-TerminalSet'){
-	# This section is required to hide the console window on Win 11
-	if((Get-WmiObject -Class Win32_OperatingSystem).Caption -match "Windows 11") {
-		# Define console types
-		$legacy='{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}' # This is the legacy console we all know, and can control
-		$letWin='{00000000-0000-0000-0000-000000000000}' # This is the default for Win 11
-		$terminal='{2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}' # This is the first part of "New Terminal"
-		$terminal2='{E12CFF52-A866-4C77-9A90-F570A7AA2C6B}' # This key is also required for "New Terminal"
-
-		# On brand new Windows installations, if a console window has never been opened this value doesn't exist. Set to default if not present (Simulate 1st console open)
-		if(!(Get-ItemProperty 'HKCU:\Console\%%Startup').PSObject.Properties.Name -contains 'DelegationConsole'){
-			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $letWin
-			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $letWin
-		}
-
-		# Store current console settings
-		$currentConsole=Get-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole'
-
-		# Check if compatible console is selected
-		if($currentConsole.DelegationConsole -ne $legacy) {
-			$defaultConsole=$currentConsole.DelegationConsole
-			# Switch to compatible console settings
-			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $legacy
-			Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $legacy
-
-			# Relaunch with temp console settings
-			CMD /c START /MIN "" POWERSHELL -nop -file "$PSCommandPath" -TerminalSet
-
-			# Switch back console settings to original state and exit console window that was using those settings
-			if($defaultConsole -eq $terminal) {
-				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $terminal
-				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $terminal2
-			} else {
-				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationConsole' -Value $defaultConsole
-				Set-ItemProperty -Path 'HKCU:\Console\%%Startup' -Name 'DelegationTerminal' -Value $defaultConsole
-			}
-			exit
-		}
-	}
-}
 
 # Allow Single Instance Only
 $AppId = 'Simple IP Scanner'
@@ -54,6 +45,79 @@ if (-not $singleInstance){
 	$shell = New-Object -ComObject Wscript.Shell
 	$shell.Popup("$AppId is already running!",0,'ERROR:',0x0) | Out-Null
 	Exit
+}
+
+# stage sorting settings
+$priorSorting = $false
+# This function is needed to make sure sorting by [version] is maintained when sorting by IP Address
+$listViewSortColumn = {
+	param([System.Object]$sender, [System.EventArgs]$Event)
+
+	$SortPropertyName = $Event.OriginalSource.Column.DisplayMemberBinding.Path.Path
+
+	# Check if sorting the IP Address column
+	if ($SortPropertyName -eq "IPaddress") {
+		# Use version sorting for IP addresses
+		$sortDescription = $Sender.Items.SortDescriptions | Where-Object { $_.PropertyName -eq $SortPropertyName }
+
+		Switch ($True)
+		{
+			{-not $sortDescription}
+			{
+				# If no sorting has occurred before, start with descending for IPaddress
+				$Direction = if($priorSorting) {[System.ComponentModel.ListSortDirection]::Ascending} else {[System.ComponentModel.ListSortDirection]::Descending}
+				$priorSorting = $true
+			}
+
+			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Descending}
+			{$Direction = [System.ComponentModel.ListSortDirection]::Ascending}
+
+			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Ascending}
+			{$Direction = [System.ComponentModel.ListSortDirection]::Descending}
+
+			{$sortDescription}
+			{$Sender.Items.SortDescriptions.Remove($sortDescription)}
+
+			{$Direction -is [System.ComponentModel.ListSortDirection]}
+			{
+				$Sender.Items.SortDescriptions.Insert(0,
+					[System.ComponentModel.SortDescription]::new($SortPropertyName, $Direction)
+				)
+
+				# Sort the items before re-adding them to the ListView
+				$sortedItems = $Sender.Items | Sort-Object -Property @{Expression={[version]$_.IPaddress}; Ascending=($Direction -eq [System.ComponentModel.ListSortDirection]::Ascending)}
+				$Sender.Items.Clear()
+				$sortedItems | ForEach-Object { $Sender.Items.Add($_) }
+			}
+		}
+	} else {
+		# Default sorting for other columns
+		$sortDescription = $Sender.Items.SortDescriptions | Where-Object { $_.PropertyName -eq $SortPropertyName }
+
+		Switch ($True)
+		{
+			{-not $sortDescription}
+			{
+				$Direction = [System.ComponentModel.ListSortDirection]::Ascending
+				$priorSorting = $true
+			}
+
+			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Descending}
+			{$Direction = [System.ComponentModel.ListSortDirection]::Ascending}
+
+			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Ascending}
+			{$Direction = [System.ComponentModel.ListSortDirection]::Descending}
+
+			{$sortDescription}
+			{$Sender.Items.SortDescriptions.Remove($sortDescription)}
+
+			{$Direction -is [System.ComponentModel.ListSortDirection]}
+			{
+				$newSortDescription = [System.ComponentModel.SortDescription]::new($SortPropertyName,$Direction)
+				$Sender.Items.SortDescriptions.Insert(0,$newSortDescription)
+			}
+		}
+	}
 }
 
 # GUI Main Dispatcher
@@ -144,7 +208,7 @@ $RunspacePool.Open()
 
 # List peers
 function scanProcess {
-	$PowerShell = [powershell]::Create().AddScript({
+	$backgroundThread = [powershell]::Create().AddScript({
 		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac)
 
 		function Update-uiBackground{
@@ -235,8 +299,8 @@ function scanProcess {
 		}
 	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac)
 
-	$PowerShell.RunspacePool = $RunspacePool
-	$job = $PowerShell.BeginInvoke()
+	$backgroundThread.RunspacePool = $RunspacePool
+	$startScan = $backgroundThread.BeginInvoke()
 }
 
 # Launch selected item in browser or file explorer
@@ -339,7 +403,7 @@ function Launch-WebInterfaceOrShare {
 				<Label Name="BarText" Foreground="#000000" FontWeight="Bold" Content="Scan" Width="250" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
 			</Grid>
 		</Button>
-	   <ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
+			<ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
 			<ListView.View>
 				<GridView>
 					<GridViewColumn Header= "MAC Address" DisplayMemberBinding ="{Binding MACaddress}" Width="150" />
@@ -372,12 +436,31 @@ $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main
 
 # Set Title and Add Closing
 $Main.Title = "$AppId"
+
 $Main.Add_Closing({
-	$RunspacePool.Close()
-	$RunspacePool.Dispose()
-	[System.Windows.Forms.Application]::Exit()
-	Stop-Process $pid
+	# Clean up RunspacePool if it exists
+	if ($RunspacePool) {
+		try {
+			$RunspacePool.Close()
+		}
+		catch {
+			# Logging: Add-Content -Path "C:\path\to\logfile.txt" -Value "Error closing RunspacePool: $_"
+			$null = $_
+		}
+		finally {
+			$RunspacePool.Dispose()
+		}
+	}
+	$Main.Add_Closed({
+		[Environment]::Exit(0)
+	})
 })
+
+# Add listView column header click capture
+$ListView.AddHandler(
+	[System.Windows.Controls.GridViewColumnHeader]::ClickEvent,
+	[System.Windows.RoutedEventHandler]$listViewSortColumn
+)
 
 # Actions on ListItem Double-Click
 $listView.Add_MouseDoubleClick({
@@ -394,6 +477,11 @@ $listView.Add_MouseDoubleClick({
 $listView.Add_MouseLeftButtonDown({
 	$listView.SelectedItems.Clear()
 })
+
+# Ensure clean ListView
+if($listview.Items){
+	$listview.Items.Clear()
+}
 
 # Define Scan Button Actions
 $Scan.Add_MouseEnter({
@@ -420,12 +508,5 @@ $Scan.Add_Click({
 	Update-uiMain
 })
 
-# Ensure clean ListView before launching
-if($listview.Items){
-	$listview.Items.Clear()
-}
-
 # Show Window
 $Main.ShowDialog() | out-null
-$appContext=New-Object System.Windows.Forms.ApplicationContext
-[void][System.Windows.Forms.Application]::Run($appContext)
