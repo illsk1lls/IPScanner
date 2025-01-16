@@ -1,6 +1,6 @@
-<# :: Hybrid CMD / Powershell Launcher
+<# :: Hybrid CMD / Powershell Launcher - Rename file to .CMD to Autolaunch with console settings (Double-Click) - Rename to .PS1 to run as Powershell script without console settings
 @ECHO OFF
-SET "LEGACY={B23D10C0-E52E-411E-9D5B-C09FDF709C7D}"&SET "LETWIN={00000000-0000-0000-0000-000000000000}"&SET "TERMINAL={2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}"&SET "TERMINAL2={E12CFF52-A866-4C77-9A90-F570A7AA2C6B}"
+SET "0=%~f0"&SET "LEGACY={B23D10C0-E52E-411E-9D5B-C09FDF709C7D}"&SET "LETWIN={00000000-0000-0000-0000-000000000000}"&SET "TERMINAL={2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}"&SET "TERMINAL2={E12CFF52-A866-4C77-9A90-F570A7AA2C6B}"
 POWERSHELL -nop -c "Get-WmiObject -Class Win32_OperatingSystem | Select -ExpandProperty Caption | Find 'Windows 11'">nul
 IF ERRORLEVEL 0 (
 	SET isEleven=1
@@ -30,10 +30,10 @@ IF "%isEleven%"=="1" (
 	)
 )
 EXIT
-#>$PSCommandPath=$PSCommandPath.Replace("/\.[^/.]+$/", ".cmd") | Out-Null
+#>if($env:0){$PSCommandPath="$env:0"}
 ###POWERSHELL BELOW THIS LINE###
 
-# Hide Console - Show GUI Only
+# Hide Console - Show GUI Only - Only works for Legacy console
 Add-Type -MemberDefinition '[DllImport("User32.dll")]public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Namespace Win32 -Name Functions
 $closeConsoleUseGUI=[Win32.Functions]::ShowWindow((Get-Process -Id $PID).MainWindowHandle,0)
 
@@ -45,79 +45,6 @@ if (-not $singleInstance){
 	$shell = New-Object -ComObject Wscript.Shell
 	$shell.Popup("$AppId is already running!",0,'ERROR:',0x0) | Out-Null
 	Exit
-}
-
-# stage sorting settings
-$priorSorting = $false
-# This function is needed to make sure sorting by [version] is maintained when sorting by IP Address
-$listViewSortColumn = {
-	param([System.Object]$sender, [System.EventArgs]$Event)
-
-	$SortPropertyName = $Event.OriginalSource.Column.DisplayMemberBinding.Path.Path
-
-	# Check if sorting the IP Address column
-	if ($SortPropertyName -eq "IPaddress") {
-		# Use version sorting for IP addresses
-		$sortDescription = $Sender.Items.SortDescriptions | Where-Object { $_.PropertyName -eq $SortPropertyName }
-
-		Switch ($True)
-		{
-			{-not $sortDescription}
-			{
-				# If no sorting has occurred before, start with descending for IPaddress
-				$Direction = if($priorSorting) {[System.ComponentModel.ListSortDirection]::Ascending} else {[System.ComponentModel.ListSortDirection]::Descending}
-				$priorSorting = $true
-			}
-
-			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Descending}
-			{$Direction = [System.ComponentModel.ListSortDirection]::Ascending}
-
-			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Ascending}
-			{$Direction = [System.ComponentModel.ListSortDirection]::Descending}
-
-			{$sortDescription}
-			{$Sender.Items.SortDescriptions.Remove($sortDescription)}
-
-			{$Direction -is [System.ComponentModel.ListSortDirection]}
-			{
-				$Sender.Items.SortDescriptions.Insert(0,
-					[System.ComponentModel.SortDescription]::new($SortPropertyName, $Direction)
-				)
-
-				# Sort the items before re-adding them to the ListView
-				$sortedItems = $Sender.Items | Sort-Object -Property @{Expression={[version]$_.IPaddress}; Ascending=($Direction -eq [System.ComponentModel.ListSortDirection]::Ascending)}
-				$Sender.Items.Clear()
-				$sortedItems | ForEach-Object { $Sender.Items.Add($_) }
-			}
-		}
-	} else {
-		# Default sorting for other columns
-		$sortDescription = $Sender.Items.SortDescriptions | Where-Object { $_.PropertyName -eq $SortPropertyName }
-
-		Switch ($True)
-		{
-			{-not $sortDescription}
-			{
-				$Direction = [System.ComponentModel.ListSortDirection]::Ascending
-				$priorSorting = $true
-			}
-
-			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Descending}
-			{$Direction = [System.ComponentModel.ListSortDirection]::Ascending}
-
-			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Ascending}
-			{$Direction = [System.ComponentModel.ListSortDirection]::Descending}
-
-			{$sortDescription}
-			{$Sender.Items.SortDescriptions.Remove($sortDescription)}
-
-			{$Direction -is [System.ComponentModel.ListSortDirection]}
-			{
-				$newSortDescription = [System.ComponentModel.SortDescription]::new($SortPropertyName,$Direction)
-				$Sender.Items.SortDescriptions.Insert(0,$newSortDescription)
-			}
-		}
-	}
 }
 
 # GUI Main Dispatcher
@@ -303,6 +230,78 @@ function scanProcess {
 	$startScan = $backgroundThread.BeginInvoke()
 }
 
+# This function is needed to make sure sorting by [version] is maintained when sorting by IP Address
+$priorSorting = $false
+$listViewSortColumn = {
+	param([System.Object]$sender, [System.EventArgs]$Event)
+
+	$SortPropertyName = $Event.OriginalSource.Column.DisplayMemberBinding.Path.Path
+
+	# Check if sorting the IP Address column
+	if ($SortPropertyName -eq "IPaddress") {
+		# Use version sorting for IP addresses
+		$sortDescription = $Sender.Items.SortDescriptions | Where-Object { $_.PropertyName -eq $SortPropertyName }
+
+		Switch ($True)
+		{
+			{-not $sortDescription}
+			{
+				# If no sorting has occurred before, start with descending for IPaddress
+				$Direction = if($priorSorting) {[System.ComponentModel.ListSortDirection]::Ascending} else {[System.ComponentModel.ListSortDirection]::Descending}
+				$priorSorting = $true
+			}
+
+			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Descending}
+			{$Direction = [System.ComponentModel.ListSortDirection]::Ascending}
+
+			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Ascending}
+			{$Direction = [System.ComponentModel.ListSortDirection]::Descending}
+
+			{$sortDescription}
+			{$Sender.Items.SortDescriptions.Remove($sortDescription)}
+
+			{$Direction -is [System.ComponentModel.ListSortDirection]}
+			{
+				$Sender.Items.SortDescriptions.Insert(0,
+					[System.ComponentModel.SortDescription]::new($SortPropertyName, $Direction)
+				)
+
+				# Sort the items before re-adding them to the ListView
+				$sortedItems = $Sender.Items | Sort-Object -Property @{Expression={[version]$_.IPaddress}; Ascending=($Direction -eq [System.ComponentModel.ListSortDirection]::Ascending)}
+				$Sender.Items.Clear()
+				$sortedItems | ForEach-Object { $Sender.Items.Add($_) }
+			}
+		}
+	} else {
+		# Default sorting for other columns
+		$sortDescription = $Sender.Items.SortDescriptions | Where-Object { $_.PropertyName -eq $SortPropertyName }
+
+		Switch ($True)
+		{
+			{-not $sortDescription}
+			{
+				$Direction = [System.ComponentModel.ListSortDirection]::Ascending
+				$priorSorting = $true
+			}
+
+			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Descending}
+			{$Direction = [System.ComponentModel.ListSortDirection]::Ascending}
+
+			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Ascending}
+			{$Direction = [System.ComponentModel.ListSortDirection]::Descending}
+
+			{$sortDescription}
+			{$Sender.Items.SortDescriptions.Remove($sortDescription)}
+
+			{$Direction -is [System.ComponentModel.ListSortDirection]}
+			{
+				$newSortDescription = [System.ComponentModel.SortDescription]::new($SortPropertyName,$Direction)
+				$Sender.Items.SortDescriptions.Insert(0,$newSortDescription)
+			}
+		}
+	}
+}
+
 # Launch selected item in browser or file explorer
 function Launch-WebInterfaceOrShare {
 	param (
@@ -436,7 +435,9 @@ $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main
 
 # Set Title and Add Closing
 $Main.Title = "$AppId"
-
+$Main.Add_ContentRendered({
+	$Main.Activate()
+})
 $Main.Add_Closing({
 	# Clean up RunspacePool if it exists
 	if ($RunspacePool) {
@@ -495,6 +496,19 @@ $Scan.Add_MouseLeave({
 })
 
 $Scan.Add_Click({
+	# If CTRL key is held while clicking the Scan button, offer to clear ARP cache as Admin prior to Scan process
+	$CtrlKey = '0x11'
+	$CheckCtrlHeldDuringScan='[DllImport("user32.dll", CharSet=CharSet.Auto, ExactSpelling=true)]public static extern short GetAsyncKeyState(int virtualKeyCode);'
+	Add-Type -MemberDefinition $CheckCtrlHeldDuringScan -Name Keyboard -Namespace PsOneApi
+	if([bool]([PsOneApi.Keyboard]::GetAsyncKeyState($CtrlKey) -eq -32767)){
+		$clearCache=New-Object -ComObject Wscript.Shell;$doClearCache=$clearCache.Popup("Do you want to clear the cached peer list before scanning?",0,'[Admin Required]',1 + 4096)
+		if($doClearCache -eq 1){
+			Start-Process -Verb RunAs powershell -WindowStyle Minimized -ArgumentList '-Command "& {Remove-NetNeighbor -InterfaceAlias * -Confirm:$false}"'
+			$isCleared=New-Object -ComObject Wscript.Shell;$isCleared.Popup("Network Peer list cleared...",0,'[List Cleared]',0 + 4096) | Out-Null
+		} else {
+			$dontClear=New-Object -ComObject Wscript.Shell;$dontClear.Popup("Continuing Scan in Normal Mode...",0,'[Process Aborted]',0 + 4096) | Out-Null
+		}
+	}
 	$Scan.IsEnabled = $false
 	$listView.Items.Clear()
 	$BarText.Content = 'Getting localHost Info'
