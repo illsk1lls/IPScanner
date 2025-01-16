@@ -136,7 +136,7 @@ $RunspacePool.Open()
 # List peers
 function scanProcess {
 	$backgroundThread = [powershell]::Create().AddScript({
-		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac)
+		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac, $hostNameColumn)
 
 		function Update-uiBackground{
 			param($action)
@@ -215,6 +215,12 @@ function scanProcess {
 					}
 				}
 				$i++
+				if ($i -eq 19) {
+					Update-uiBackground{
+						$hostNameColumn.Width = 300
+					}
+				}
+
 			}
 		}
 		List-Machines
@@ -224,7 +230,7 @@ function scanProcess {
 			$Scan.IsEnabled = $true
 			$Progress.Value = 0
 		}
-	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac)
+	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac).AddArgument($hostNameColumn)
 
 	$backgroundThread.RunspacePool = $RunspacePool
 	$startScan = $backgroundThread.BeginInvoke()
@@ -347,6 +353,17 @@ function Launch-WebInterfaceOrShare {
 				</Trigger>
 			</ControlTemplate.Triggers>
 		</ControlTemplate>
+		<ControlTemplate x:Key="NoMouseOverColumnHeaderTemplate" TargetType="{x:Type GridViewColumnHeader}">
+			<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+				<ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True"/>
+			</Border>
+			<ControlTemplate.Triggers>
+				<Trigger Property="IsEnabled" Value="False">
+					<Setter Property="Background" Value="{x:Static SystemColors.ControlLightBrush}"/>
+					<Setter Property="Foreground" Value="{x:Static SystemColors.GrayTextBrush}"/>
+				</Trigger>
+			</ControlTemplate.Triggers>
+		</ControlTemplate>
 		<Style x:Key="ListViewStyle" TargetType="{x:Type ListViewItem}" >
 			<Setter Property="Background" Value="#111111"/>
 			<Setter Property="Foreground" Value="#EEEEEE"/>
@@ -371,13 +388,43 @@ function Launch-WebInterfaceOrShare {
 				</MultiTrigger>
 			</Style.Triggers>
 		</Style>
+		<Style x:Key="ScrollThumbs" TargetType="{x:Type Thumb}">
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type Thumb}">
+						<Grid x:Name="Grid">
+							<Rectangle HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Width="Auto" Height="Auto" Fill="Transparent"/>
+							<Border x:Name="Rectangle1" CornerRadius="5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Width="Auto" Height="Auto" Background="{TemplateBinding Background}"/>
+						</Grid>
+						<ControlTemplate.Triggers>
+							<Trigger Property="Tag" Value="Horizontal">
+								<Setter TargetName="Rectangle1" Property="Width" Value="Auto"/>
+								<Setter TargetName="Rectangle1" Property="Height" Value="7"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
 		<Style x:Key="{x:Type ScrollBar}" TargetType="{x:Type ScrollBar}">
 			<Setter Property="Stylus.IsPressAndHoldEnabled" Value="True"/>
 			<Setter Property="Stylus.IsFlicksEnabled" Value="True" />
 			<Setter Property="Background" Value="#333333"/>
-			<Setter Property="Foreground" Value="#000000"/>
 			<Setter Property="BorderThickness" Value="1,0"/>
-			<Setter Property="BorderBrush" Value="#111111"/>
+			<Setter Property="BorderBrush" Value="#000000"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type ScrollBar}">
+						<Grid x:Name="GridRoot" Width="{TemplateBinding Width}" Height="{TemplateBinding Height}" SnapsToDevicePixels="True">
+							<Track x:Name="PART_Track" IsDirectionReversed="true" Focusable="false">
+								<Track.Thumb>
+									<Thumb x:Name="Thumb" Style="{StaticResource ScrollThumbs}" Background="#777777" />
+								</Track.Thumb>
+							</Track>
+						</Grid>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
 			<Style.Triggers>
 				<Trigger Property="Orientation" Value="Vertical">
 					<Setter Property="Width" Value="10" />
@@ -387,10 +434,25 @@ function Launch-WebInterfaceOrShare {
 				</Trigger>
 				<Trigger Property="Orientation" Value="Horizontal">
 					<Setter Property="Width" Value="845" />
-					<Setter Property="Height" Value="8" />
-					<Setter Property="MinHeight" Value="8" />
+					<Setter Property="Height" Value="10" />
+					<Setter Property="MinHeight" Value="10" />
 					<Setter Property="MinWidth" Value="845" />
 					<Setter Property="Margin" Value="-2,0,0,0" />
+				</Trigger>
+			</Style.Triggers>
+		</Style>
+		<Style x:Key="ColumnHeaderStyle" TargetType="{x:Type GridViewColumnHeader}">
+			<Setter Property="Template" Value="{StaticResource NoMouseOverColumnHeaderTemplate}" />
+			<Setter Property="Background" Value="#CCCCCC" />
+			<Setter Property="Foreground" Value="Black" />
+			<Setter Property="BorderBrush" Value="#333333" />
+			<Setter Property="BorderThickness" Value="0,0,1,0" />
+			<Setter Property="Cursor" Value="Arrow" />
+			<Style.Triggers>
+				<Trigger Property="IsMouseOver" Value="True">
+					<Setter Property="Background" Value="#EEEEEE" />
+					<Setter Property="Foreground" Value="Black" />
+					<Setter Property="BorderBrush" Value="#333333" />
 				</Trigger>
 			</Style.Triggers>
 		</Style>
@@ -402,13 +464,13 @@ function Launch-WebInterfaceOrShare {
 				<Label Name="BarText" Foreground="#000000" FontWeight="Bold" Content="Scan" Width="250" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
 			</Grid>
 		</Button>
-			<ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
+		<ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
 			<ListView.View>
 				<GridView>
-					<GridViewColumn Header= "MAC Address" DisplayMemberBinding ="{Binding MACaddress}" Width="150" />
-					<GridViewColumn Header= "Vendor" DisplayMemberBinding ="{Binding Vendor}" Width="250" />
-					<GridViewColumn Header= "IP Address" DisplayMemberBinding ="{Binding IPaddress}" Width="140" />
-					<GridViewColumn Header= "Host Name" DisplayMemberBinding ="{Binding HostName}" Width="300" />
+					<GridViewColumn Header= "MAC Address" DisplayMemberBinding ="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+					<GridViewColumn Header= "Vendor" DisplayMemberBinding ="{Binding Vendor}" Width="250" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+					<GridViewColumn Header= "IP Address" DisplayMemberBinding ="{Binding IPaddress}" Width="140" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+					<GridViewColumn Header= "Host Name" DisplayMemberBinding ="{Binding HostName}" Width="314" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
 				</GridView>
 			</ListView.View>
 		</ListView>
@@ -438,6 +500,7 @@ $Main.Title = "$AppId"
 $Main.Add_ContentRendered({
 	$Main.Activate()
 })
+
 $Main.Add_Closing({
 	# Clean up RunspacePool if it exists
 	if ($RunspacePool) {
@@ -445,7 +508,7 @@ $Main.Add_Closing({
 			$RunspacePool.Close()
 		}
 		catch {
-			# Logging: Add-Content -Path "C:\path\to\logfile.txt" -Value "Error closing RunspacePool: $_"
+			#TO-DO Add logging, eg: Add-Content -Path "C:\path\to\logfile.txt" -Value "Error closing RunspacePool: $_"
 			$null = $_
 		}
 		finally {
@@ -462,6 +525,8 @@ $ListView.AddHandler(
 	[System.Windows.Controls.GridViewColumnHeader]::ClickEvent,
 	[System.Windows.RoutedEventHandler]$listViewSortColumn
 )
+
+$hostNameColumn = ($listView.View.Columns | Where-Object {$_.Header -eq "Host Name"})
 
 # Actions on ListItem Double-Click
 $listView.Add_MouseDoubleClick({
@@ -511,6 +576,7 @@ $Scan.Add_Click({
 	}
 	$Scan.IsEnabled = $false
 	$listView.Items.Clear()
+	$hostNameColumn.Width = 314
 	$BarText.Content = 'Getting localHost Info'
 	Update-uiMain
 	Get-HostInfo
