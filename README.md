@@ -8,3 +8,5 @@ For use with basic networks to get an up to date list of client: MAC Address, Ve
 External IP Address and Domain are also displayed in the titlebar after initiating a scan<br>
 
 Double-Clicking a listed item will attempt to browse to that item, using the first available option (In the following order): HTTPS \>\> HTTP \>\> BrowseShare<br>
+
+(Only the CMD file is required)
