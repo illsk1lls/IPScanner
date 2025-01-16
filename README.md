@@ -12,5 +12,4 @@ External IP Address and Domain are also displayed in the titlebar after initiati
 
 Double-Clicking a listed item will attempt to browse to that item, using the first available option (In the following order): HTTPS \>\> HTTP \>\> BrowseShare<br>
 
-
 If you wish to clear your ARP Cache prior to scanning the network, hold the \[Ctrl\] key while clicking the Scan button.
