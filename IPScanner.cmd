@@ -142,12 +142,10 @@ function scanProcess {
 			param($action)
 			$Main.Dispatcher.Invoke([action]$action, [Windows.Threading.DispatcherPriority]::Background)
 		}
-
 		function Get-MacVendor($mac) {
 			# Get Vendor via Mac (thanks to u/mprz)
 			return (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
 		}
-
 		function List-Machines {
 			Update-uiBackground{
 				$Progress.Value = "0"
@@ -172,24 +170,30 @@ function scanProcess {
 
 			# Get My Vendor via Mac lookup
 			$tryMyVendor = (Get-MacVendor "$myMac").Company
-			$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unknown'}
+			$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unable to Identify'}
 
-			# Cycle through ARP table
+			# Cycle through ARP table to populate initial ListView data with vendor lookup
 			$i = 0
 			$totalItems = $arpOutput.Count - 1
+			$jobs = @()
+
 			foreach ($line in $arpOutput) {
 				$ip = $line.IPAddress
 				$mac = $line.LinkLayerAddress.Replace('-',':')
-				$name = (Resolve-DnsName -Name $ip -Server $gateway -ErrorAction SilentlyContinue).NameHost
+				$name = 'Resolving...'
+				$vendor = 'Identifying...'
 
-				# Check if $name is null or empty since no DNS record was found
-				if (!($name)) {
-					$name = "Unable to Resolve"
+				# Immediate vendor lookup
+				if ($ip -ne $internalIP) {
+					try {
+						$vendorLookup = Get-MacVendor $mac
+						$vendor = if($vendorLookup.Company){$vendorLookup.Company.substring(0, [System.Math]::Min(35, $vendorLookup.Company.Length))} else {'Unable to Identify'}
+					} catch {
+						$vendor = 'Unable to Identify'
+					}
+				} else {
+					$vendor = $myVendor
 				}
-
-				# Get Remote Device Vendor via Mac lookup
-				$tryVendor=(Get-MacVendor "$mac").Company
-				$vendor = if($tryVendor){$tryVendor.substring(0, [System.Math]::Min(35, $tryVendor.Length))} else {'Unknown'}
 
 				# Format and display
 				$lastOctet = [int]($ip -split '\.')[-1]
@@ -221,17 +225,51 @@ function scanProcess {
 					}
 				}
 
+				# Start job for hostname resolution
+				if ($ip -ne $internalIP) {
+					$hostnameJob = Start-Job -ScriptBlock {
+						param($ip, $gateway)
+						$timeoutSeconds = 5 # Adjust this value as needed
+						$resolvedName = try {
+							$result = Resolve-DnsName -Name $ip -Server $gateway -ErrorAction Stop
+							$result.NameHost
+						} catch {
+							"Unable to Resolve"
+						}
+						return @{IP=$ip; HostName=$resolvedName; Type="HostName"}
+					} -ArgumentList $ip, $gateway
+					$jobs += $hostnameJob
+				}
+			}
+
+			# Process job results as they complete
+			while ($jobs.State -contains "Running") {
+				Start-Sleep -Milliseconds 100
+				foreach ($job in $jobs) {
+					if ($job.State -eq "Completed") {
+						$result = Receive-Job $job
+						Update-uiBackground{
+							foreach ($item in $listView.Items) {
+								if ($result.Type -eq "HostName" -and $item.IPaddress -eq $result.IP) {
+									$item.HostName = $result.HostName
+								}
+							}
+							$listView.Items.Refresh()
+						}
+						$jobs = $jobs | Where-Object {$_ -ne $job}
+					}
+				}
+			}
+
+			# After all jobs are done, reset the scan button
+			Update-uiBackground{
+				$BarText.Content = 'Scan'
+				$Scan.IsEnabled = $true
+				$Progress.Value = 0
 			}
 		}
 		List-Machines
-		Update-uiBackground{
-			# Reset Scan button
-			$BarText.Content = 'Scan'
-			$Scan.IsEnabled = $true
-			$Progress.Value = 0
-		}
 	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac).AddArgument($hostNameColumn)
-
 	$backgroundThread.RunspacePool = $RunspacePool
 	$startScan = $backgroundThread.BeginInvoke()
 }
@@ -241,62 +279,80 @@ function CheckConnectivity {
 	param (
 		[string]$selectedhost
 	)
-	$global:tryToConnect = $selectedhost.Replace(' (This Device)','')
 
-	# Check if WebInterface exists HTTPS then HTTP
-	$TCPClientHTTPS = [System.Net.Sockets.TcpClient]::new()
-	$ResultHTTPS = $TCPClientHTTPS.ConnectAsync($tryToConnect, 443).Wait(250)
-	$TCPClientHTTPS.Close()
-	if(!($ResultHTTPS)){
+	if ($selectedhost -match ' \(This Device\)') {
+		$btnRDP.IsEnabled = $false
+		$btnRDP.Visibility = 'Collapsed'
+		$btnWebInterface.IsEnabled = $false
+		$btnWebInterface.Visibility = 'Collapsed'
+		$btnShare.IsEnabled = $false
+		$btnShare.Visibility = 'Collapsed'
+		$noConnectionsLabel.Text = 'This Device'
+		$noConnectionsLabel.Visibility = 'Visible'
+	} else {
+		$global:tryToConnect = $selectedhost.Replace(' (This Device)','')
+		$noConnectionsLabel.Text = 'No Connections Found'
+
+		# Check if WebInterface exists HTTP then HTTPS
 		$TCPClientHTTP = [System.Net.Sockets.TcpClient]::new()
 		$ResultHTTP = $TCPClientHTTP.ConnectAsync($tryToConnect, 80).Wait(250)
 		$TCPClientHTTP.Close()
-	}
+		if(!($ResultHTTP)){
+			$TCPClientHTTPS = [System.Net.Sockets.TcpClient]::new()
+			$ResultHTTPS = $TCPClientHTTPS.ConnectAsync($tryToConnect, 443).Wait(250)
+			$TCPClientHTTPS.Close()
+		}
 
-	$TCPClientSMBv2 = [System.Net.Sockets.TcpClient]::new()
-	$ResultSMBv2 = $TCPClientSMBv2.ConnectAsync($tryToConnect, 445).Wait(250)
-	$TCPClientSMBv2.Close()
-	if(!($ResultSMBv2)){
-		$TCPClientSMB = [System.Net.Sockets.TcpClient]::new()
-		$ResultSMB = $TCPClientSMB.ConnectAsync($tryToConnect, 139).Wait(250)
-		$TCPClientSMB.Close()
-	}
+		$TCPClientSMBv2 = [System.Net.Sockets.TcpClient]::new()
+		$ResultSMBv2 = $TCPClientSMBv2.ConnectAsync($tryToConnect, 445).Wait(250)
+		$TCPClientSMBv2.Close()
+		if(!($ResultSMBv2)){
+			$TCPClientSMB = [System.Net.Sockets.TcpClient]::new()
+			$ResultSMB = $TCPClientSMB.ConnectAsync($tryToConnect, 139).Wait(250)
+			$TCPClientSMB.Close()
+		}
 
-	$TCPClientRDP = [System.Net.Sockets.TcpClient]::new()
-	$ResultRDP = $TCPClientRDP.ConnectAsync($tryToConnect, 3389).Wait(250)
-	$TCPClientRDP.Close()
+		$TCPClientRDP = [System.Net.Sockets.TcpClient]::new()
+		$ResultRDP = $TCPClientRDP.ConnectAsync($tryToConnect, 3389).Wait(250)
+		$TCPClientRDP.Close()
 
-	if($ResultRDP -and $HostName -ne $tryToConnect) {
-		$btnRDP.IsEnabled = $true
-		$btnRDP.Visibility = 'Visible'
-	} else {
-		$btnRDP.IsEnabled = $false
-		$btnRDP.Visibility = 'Collapsed'
-	}
+		if($ResultRDP -and $HostName -ne $tryToConnect) {
+			$btnRDP.IsEnabled = $true
+			$btnRDP.Visibility = 'Visible'
+		} else {
+			$btnRDP.IsEnabled = $false
+			$btnRDP.Visibility = 'Collapsed'
+		}
 
-	# Priority order: HTTPS/HTTP
-	if($ResultHTTPS -and $HostName -ne $tryToConnect) {
-		$btnWebInterface.IsEnabled = $true
-		$btnWebInterface.Visibility = 'Visible'
-		$global:httpsAvailable=1
-	} elseif($ResultHTTP -and $HostName -ne $tryToConnect) {
-		$btnWebInterface.IsEnabled = $true
-		$btnWebInterface.Visibility = 'Visible'
-	} else {
-		$btnWebInterface.IsEnabled = $false
-		$btnWebInterface.Visibility = 'Collapsed'
-	}
+		# Priority order: HTTP/HTTPS
+		if($ResultHTTP -and $HostName -ne $tryToConnect) {
+			$btnWebInterface.IsEnabled = $true
+			$btnWebInterface.Visibility = 'Visible'
+			$global:httpAvailable=1
+		} elseif($ResultHTTPS -and $HostName -ne $tryToConnect) {
+			$btnWebInterface.IsEnabled = $true
+			$btnWebInterface.Visibility = 'Visible'
+		} else {
+			$btnWebInterface.IsEnabled = $false
+			$btnWebInterface.Visibility = 'Collapsed'
+		}
 
-	# Priority order: SMBv2/SMB
-	if($ResultSMBv2 -and $HostName -ne $tryToConnect) {
-		$btnShare.IsEnabled = $true
-		$btnShare.Visibility = 'Visible'
-	} elseif($ResultSMB -and $HostName -ne $tryToConnect) {
-		$btnShare.IsEnabled = $true
-		$btnShare.Visibility = 'Visible'
-	} else {
-		$btnShare.IsEnabled = $false
-		$btnShare.Visibility = 'Collapsed'
+		# Priority order: SMBv2/SMB
+		if($ResultSMBv2 -and $HostName -ne $tryToConnect) {
+			$btnShare.IsEnabled = $true
+			$btnShare.Visibility = 'Visible'
+		} elseif($ResultSMB -and $HostName -ne $tryToConnect) {
+			$btnShare.IsEnabled = $true
+			$btnShare.Visibility = 'Visible'
+		} else {
+			$btnShare.IsEnabled = $false
+			$btnShare.Visibility = 'Collapsed'
+		}
+		if (-not $ResultRDP -and -not ($ResultHTTPS -or $ResultHTTP) -and -not ($ResultSMBv2 -or $ResultSMB)) {
+			$noConnectionsLabel.Visibility = 'Visible'
+		} else {
+			$noConnectionsLabel.Visibility = 'Collapsed'
+		}
 	}
 }
 
@@ -554,18 +610,25 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 		</ListView>
 		<Canvas Name="PopupCanvas" Background="#111111" Visibility="Hidden" Width="350" Height="140" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,10,0,0">
 			<Border Width="350" Height="140" BorderThickness="1" BorderBrush="#FF000000">
-				<StackPanel Margin="10">
-					<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,0,0,0" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-					<TextBlock Name="pHost" Foreground="#EEEEEE" FontWeight="Bold" />
-					<TextBlock Name="pIP" Foreground="#EEEEEE" />
-					<TextBlock Name="pMAC" Foreground="#EEEEEE" />
-					<TextBlock Name="pVendor" Foreground="#EEEEEE" />
-					<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,6,0,0">
-						<Button Name="btnRDP" Width="30" Height="30" BorderThickness="0" IsEnabled="False" Background="Transparent" Margin="0,0,10,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-						<Button Name="btnWebInterface" Width="30" Height="30" BorderThickness="0" IsEnabled="False" Background="Transparent" Margin="0,0,10,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-						<Button Name="btnShare" Width="30" Height="30" BorderThickness="0" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+				<Grid Background="Transparent">
+					<Grid.RowDefinitions>
+						<RowDefinition Height="Auto"/>
+						<RowDefinition Height="*"/>
+					</Grid.RowDefinitions>
+					<StackPanel Margin="10" Grid.Row="1">
+						<TextBlock Name="pHost" Foreground="#EEEEEE" FontWeight="Bold" Margin="10,-15,0,0"/>
+						<TextBlock Name="pIP" Foreground="#EEEEEE" Margin="10,0,0,0" />
+						<TextBlock Name="pMAC" Foreground="#EEEEEE" Margin="10,0,0,0" />
+						<TextBlock Name="pVendor" Foreground="#EEEEEE" Margin="10,0,0,0" />
+						<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,6,0,0">
+							<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#333333" IsEnabled="False" Background="Transparent" Margin="0,0,15,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							<Button Name="btnWebInterface" Width="40" Height="32" ToolTip="Connect via Web Interface" BorderThickness="0" BorderBrush="#333333" IsEnabled="False" Background="Transparent" Margin="0,0,15,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							<Button Name="btnShare" Width="40" Height="32" ToolTip="Connect via Share" BorderThickness="0" BorderBrush="#333333" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							<TextBlock Name="noConnectionsLabel" Text="No Connections Found" Foreground="#EEEEEE" FontSize="12" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,8,0,0"/>
+						</StackPanel>
 					</StackPanel>
-				</StackPanel>
+					<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,10,0,0" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}" Panel.ZIndex="1"/>
+				</Grid>
 			</Border>
 		</Canvas>
 	</Grid>
@@ -651,23 +714,50 @@ foreach ($icon in $icons) {
 }
 
 $btnRDP.Add_Click({
+	$btnRDP.BorderThickness = "0"
 	$PopupCanvas.Visibility = 'Hidden'
 	&mstsc /v:$tryToConnect
 })
 
+$btnRDP.Add_MouseEnter({
+	$btnRDP.BorderThickness = "1"
+})
+
+$btnRDP.Add_MouseLeave({
+	$btnRDP.BorderThickness = "0"
+})
+
 $btnWebInterface.Add_Click({
+	$btnWebInterface.BorderThickness = "0"
 	$PopupCanvas.Visibility = 'Hidden'
-	# Priority order: HTTPS/HTTP/BrowseShare
-	if($script:httpsAvailable -eq 1){
-		Start-Process "`"https://$tryToConnect`""
-	} else {
+	# Priority order: HTTP/HTTPS
+	if($script:httpAvailable -eq 1){
 		Start-Process "`"http://$tryToConnect`""
+	} else {
+		Start-Process "`"https://$tryToConnect`""
 	}
 })
 
+$btnWebInterface.Add_MouseEnter({
+	$btnWebInterface.BorderThickness = "1"
+})
+
+$btnWebInterface.Add_MouseLeave({
+	$btnWebInterface.BorderThickness = "0"
+})
+
 $btnShare.Add_Click({
+	$btnShare.BorderThickness = "0"
 	$PopupCanvas.Visibility = 'Hidden'
 	&explorer "`"\\$tryToConnect`""
+})
+
+$btnShare.Add_MouseEnter({
+	$btnShare.BorderThickness = "1"
+})
+
+$btnShare.Add_MouseLeave({
+	$btnShare.BorderThickness = "0"
 })
 
 # Add listView column header click capture
@@ -690,7 +780,7 @@ $listView.Add_MouseDoubleClick({
 		$pMAC.Text = "MAC: " + $selectedItem.MACaddress
 		$pVendor.Text = "Vendor: " + $selectedItem.Vendor
 		$pIP.Text = "IP: " + $selectedItem.IPaddress
-		$pHost.Text = "Host: " + $selectedItem.HostName
+		$pHost.Text = "Host: " + $selectedItem.HostName.Replace(' (This Device)','')
 		$PopupCanvas.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
 		$PopupCanvas.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
 		$PopupCanvas.Visibility = 'Visible'
