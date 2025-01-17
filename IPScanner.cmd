@@ -368,6 +368,7 @@ function Launch-WebInterfaceOrShare {
 			<Setter Property="Background" Value="#111111"/>
 			<Setter Property="Foreground" Value="#EEEEEE"/>
 			<Setter Property="FontWeight" Value="Normal"/>
+			<Setter Property="BorderThickness" Value="1"/>
 			<Style.Triggers>
 				<Trigger Property="ItemsControl.AlternationIndex" Value="1">
 					<Setter Property="Background" Value="#000000"/>
@@ -446,7 +447,7 @@ function Launch-WebInterfaceOrShare {
 			<Setter Property="Background" Value="#CCCCCC" />
 			<Setter Property="Foreground" Value="Black" />
 			<Setter Property="BorderBrush" Value="#333333" />
-			<Setter Property="BorderThickness" Value="0,0,1,0" />
+			<Setter Property="BorderThickness" Value="0,0,2,0" />
 			<Setter Property="Cursor" Value="Arrow" />
 			<Style.Triggers>
 				<Trigger Property="IsMouseOver" Value="True">
