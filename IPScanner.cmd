@@ -236,6 +236,70 @@ function scanProcess {
 	$startScan = $backgroundThread.BeginInvoke()
 }
 
+# test connection availability
+function CheckConnectivity {
+	param (
+		[string]$selectedhost
+	)
+	$global:tryToConnect = $selectedhost.Replace(' (This Device)','')
+
+	# Check if WebInterface exists HTTPS then HTTP
+	$TCPClientHTTPS = [System.Net.Sockets.TcpClient]::new()
+	$ResultHTTPS = $TCPClientHTTPS.ConnectAsync($tryToConnect, 443).Wait(250)
+	$TCPClientHTTPS.Close()
+	if(!($ResultHTTPS)){
+		$TCPClientHTTP = [System.Net.Sockets.TcpClient]::new()
+		$ResultHTTP = $TCPClientHTTP.ConnectAsync($tryToConnect, 80).Wait(250)
+		$TCPClientHTTP.Close()
+	}
+
+	$TCPClientSMBv2 = [System.Net.Sockets.TcpClient]::new()
+	$ResultSMBv2 = $TCPClientSMBv2.ConnectAsync($tryToConnect, 445).Wait(250)
+	$TCPClientSMBv2.Close()
+	if(!($ResultSMBv2)){
+		$TCPClientSMB = [System.Net.Sockets.TcpClient]::new()
+		$ResultSMB = $TCPClientSMB.ConnectAsync($tryToConnect, 139).Wait(250)
+		$TCPClientSMB.Close()
+	}
+
+	$TCPClientRDP = [System.Net.Sockets.TcpClient]::new()
+	$ResultRDP = $TCPClientRDP.ConnectAsync($tryToConnect, 3389).Wait(250)
+	$TCPClientRDP.Close()
+
+	if($ResultRDP -and $HostName -ne $tryToConnect) {
+		$btnRDP.IsEnabled = $true
+		$btnRDP.Visibility = 'Visible'
+	} else {
+		$btnRDP.IsEnabled = $false
+		$btnRDP.Visibility = 'Collapsed'
+	}
+
+	# Priority order: HTTPS/HTTP
+	if($ResultHTTPS -and $HostName -ne $tryToConnect) {
+		$btnWebInterface.IsEnabled = $true
+		$btnWebInterface.Visibility = 'Visible'
+		$global:httpsAvailable=1
+	} elseif($ResultHTTP -and $HostName -ne $tryToConnect) {
+		$btnWebInterface.IsEnabled = $true
+		$btnWebInterface.Visibility = 'Visible'
+	} else {
+		$btnWebInterface.IsEnabled = $false
+		$btnWebInterface.Visibility = 'Collapsed'
+	}
+
+	# Priority order: SMBv2/SMB
+	if($ResultSMBv2 -and $HostName -ne $tryToConnect) {
+		$btnShare.IsEnabled = $true
+		$btnShare.Visibility = 'Visible'
+	} elseif($ResultSMB -and $HostName -ne $tryToConnect) {
+		$btnShare.IsEnabled = $true
+		$btnShare.Visibility = 'Visible'
+	} else {
+		$btnShare.IsEnabled = $false
+		$btnShare.Visibility = 'Collapsed'
+	}
+}
+
 # This function is needed to make sure sorting by [version] is maintained when sorting by IP Address
 $priorSorting = $false
 $listViewSortColumn = {
@@ -308,35 +372,48 @@ $listViewSortColumn = {
 	}
 }
 
-# Launch selected item in browser or file explorer
-function Launch-WebInterfaceOrShare {
-	param (
-		[string]$selectedhost
-	)
-	$launch = $selectedhost.Replace(' (This Device)','')
+# use system icons via extraction
+$getIcons = @"
+using System;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
+using System.Windows;
 
-	# Check if WebInterface exists HTTPS then HTTP
-	$TCPClientS = [System.Net.Sockets.TcpClient]::new()
-	$ResultS = $TCPClientS.ConnectAsync($launch, 443).Wait(250)
-	$TCPClientS.Close()
-	if(!($ResultS)){
-		$TCPClient = [System.Net.Sockets.TcpClient]::new()
-		$Result = $TCPClient.ConnectAsync($launch, 80).Wait(250)
-		$TCPClient.Close()
-	}
-
-	# Priority order: HTTPS/HTTP/BrowseShare
-	if($ResultS -and $HostName -ne $launch) {
-		Start-Process "`"https://$launch`""
-	} elseif($Result -and $HostName -ne $launch) {
-		Start-Process "`"http://$launch`""
-	} else {
-		&explorer "`"\\$launch`""
+namespace System
+{
+	public class IconExtractor
+	{
+		public static Icon Extract(string file, int number, bool largeIcon)
+		{
+			IntPtr large;
+			IntPtr small;
+			ExtractIconEx(file, number, out large, out small, 1);
+			try
+			{
+				return Icon.FromHandle(largeIcon ? large : small);
+			}
+			catch
+			{
+				return null;
+			}
+		}
+		public static BitmapSource IconToBitmapSource(Icon icon)
+		{
+			return Imaging.CreateBitmapSourceFromHIcon(
+				icon.Handle,
+				Int32Rect.Empty,
+				BitmapSizeOptions.FromEmptyOptions());
+		}
+		[DllImport("Shell32.dll", EntryPoint = "ExtractIconExW", CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+		private static extern int ExtractIconEx(string sFile, int iIndex, out IntPtr piLargeVersion, out IntPtr piSmallVersion, int amountIcons);
 	}
 }
+"@
 
 # Define WPF GUI Structure
-[void][System.Reflection.Assembly]::LoadWithPartialName('presentationframework')
+Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, PresentationCore, PresentationFramework, WindowsBase
 [xml]$XAML = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -475,6 +552,22 @@ function Launch-WebInterfaceOrShare {
 				</GridView>
 			</ListView.View>
 		</ListView>
+		<Canvas Name="PopupCanvas" Background="#111111" Visibility="Hidden" Width="350" Height="140" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,10,0,0">
+			<Border Width="350" Height="140" BorderThickness="1" BorderBrush="#FF000000">
+				<StackPanel Margin="10">
+					<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,0,0,0" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+					<TextBlock Name="pHost" Foreground="#EEEEEE" FontWeight="Bold" />
+					<TextBlock Name="pIP" Foreground="#EEEEEE" />
+					<TextBlock Name="pMAC" Foreground="#EEEEEE" />
+					<TextBlock Name="pVendor" Foreground="#EEEEEE" />
+					<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,6,0,0">
+						<Button Name="btnRDP" Width="30" Height="30" BorderThickness="0" IsEnabled="False" Background="Transparent" Margin="0,0,10,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+						<Button Name="btnWebInterface" Width="30" Height="30" BorderThickness="0" IsEnabled="False" Background="Transparent" Margin="0,0,10,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+						<Button Name="btnShare" Width="30" Height="30" BorderThickness="0" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+					</StackPanel>
+				</StackPanel>
+			</Border>
+		</Canvas>
 	</Grid>
 	<Window.Triggers>
 		<EventTrigger RoutedEvent="Loaded">
@@ -502,6 +595,17 @@ $Main.Add_ContentRendered({
 	$Main.Activate()
 })
 
+$pCloseButton.Add_Click({
+	$PopupCanvas.Visibility = 'Hidden'
+})
+
+$pCloseButton.Add_MouseEnter({
+	$pCloseButton.Background='#ff0000'
+})
+$pCloseButton.Add_MouseLeave({
+	$pCloseButton.Background='#111111'
+})
+
 $Main.Add_Closing({
 	# Clean up RunspacePool if it exists
 	if ($RunspacePool) {
@@ -521,6 +625,51 @@ $Main.Add_Closing({
 	})
 })
 
+# Extract and set icons
+$icons = @(
+	@{Index = 34; ButtonName = "btnRDP"},
+	@{Index = 13; ButtonName = "btnWebInterface"},
+	@{Index = 266; ButtonName = "btnShare"}
+)
+
+foreach ($icon in $icons) {
+	$extractedIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', $icon.Index, $true)
+
+	if ($extractedIcon) {
+		$bitmapSource = [System.IconExtractor]::IconToBitmapSource($extractedIcon)
+		$image = New-Object System.Windows.Controls.Image -Property @{
+			Source = $bitmapSource;
+			Width = 24;
+			Height = 24
+		}
+
+		$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+
+		$button = $Main.FindName($icon.ButtonName)
+		$button.Content = $image
+	}
+}
+
+$btnRDP.Add_Click({
+	$PopupCanvas.Visibility = 'Hidden'
+	&mstsc /v:$tryToConnect
+})
+
+$btnWebInterface.Add_Click({
+	$PopupCanvas.Visibility = 'Hidden'
+	# Priority order: HTTPS/HTTP/BrowseShare
+	if($script:httpsAvailable -eq 1){
+		Start-Process "`"https://$tryToConnect`""
+	} else {
+		Start-Process "`"http://$tryToConnect`""
+	}
+})
+
+$btnShare.Add_Click({
+	$PopupCanvas.Visibility = 'Hidden'
+	&explorer "`"\\$tryToConnect`""
+})
+
 # Add listView column header click capture
 $ListView.AddHandler(
 	[System.Windows.Controls.GridViewColumnHeader]::ClickEvent,
@@ -529,19 +678,27 @@ $ListView.AddHandler(
 
 $hostNameColumn = ($listView.View.Columns | Where-Object {$_.Header -eq "Host Name"})
 
-# Actions on ListItem Double-Click
 $listView.Add_MouseDoubleClick({
-	if($listView.SelectedItems.IPaddress){
+	if($listView.SelectedItems.Count -gt 0){
 		if($listView.SelectedItems.HostName -ne 'Unable to Resolve'){
 			$selectedHost = $listView.SelectedItems.HostName
 		} else {
 			$selectedHost = $listView.SelectedItems.IPaddress
 		}
-		Launch-WebInterfaceOrShare -selectedhost "$selectedHost"
+		CheckConnectivity -selectedhost "$selectedHost"
+		$selectedItem = $listView.SelectedItems[0]
+		$pMAC.Text = "MAC: " + $selectedItem.MACaddress
+		$pVendor.Text = "Vendor: " + $selectedItem.Vendor
+		$pIP.Text = "IP: " + $selectedItem.IPaddress
+		$pHost.Text = "Host: " + $selectedItem.HostName
+		$PopupCanvas.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
+		$PopupCanvas.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
+		$PopupCanvas.Visibility = 'Visible'
 	}
 })
 
 $listView.Add_MouseLeftButtonDown({
+	$PopupCanvas.Visibility = 'Hidden'
 	$listView.SelectedItems.Clear()
 })
 
@@ -567,12 +724,17 @@ $Scan.Add_Click({
 	$CheckCtrlHeldDuringScan='[DllImport("user32.dll", CharSet=CharSet.Auto, ExactSpelling=true)]public static extern short GetAsyncKeyState(int virtualKeyCode);'
 	Add-Type -MemberDefinition $CheckCtrlHeldDuringScan -Name Keyboard -Namespace PsOneApi
 	if([bool]([PsOneApi.Keyboard]::GetAsyncKeyState($CtrlKey) -eq -32767)){
-		$clearCache=New-Object -ComObject Wscript.Shell;$doClearCache=$clearCache.Popup("Do you want to clear the cached peer list before scanning?",0,'[Admin Required]',1 + 4096)
-		if($doClearCache -eq 1){
-			Start-Process -Verb RunAs powershell -WindowStyle Minimized -ArgumentList '-Command "& {Remove-NetNeighbor -InterfaceAlias * -Confirm:$false}"'
-			$isCleared=New-Object -ComObject Wscript.Shell;$isCleared.Popup("Network Peer list cleared...",0,'[List Cleared]',0 + 4096) | Out-Null
+	$osInfo = Get-CimInstance Win32_OperatingSystem
+		if ($osInfo.Caption -match "Server") {
+			$restricted=New-Object -ComObject Wscript.Shell;$restricted.Popup("This option is not available for Windows Servers.`n`nPlease clear your ARP Cache manually.",0,'[Restricted Feature]',0 + 4096) | Out-Null
 		} else {
-			$dontClear=New-Object -ComObject Wscript.Shell;$dontClear.Popup("Continuing Scan in Normal Mode...",0,'[Process Aborted]',0 + 4096) | Out-Null
+			$clearCache=New-Object -ComObject Wscript.Shell;$doClearCache=$clearCache.Popup("Do you want to clear the cached peer list before scanning?",0,'[Admin Required]',1 + 4096)
+			if($doClearCache -eq 1){
+				Start-Process -Verb RunAs powershell -WindowStyle Minimized -ArgumentList '-Command "& {Remove-NetNeighbor -InterfaceAlias * -Confirm:$false}"'
+				$isCleared=New-Object -ComObject Wscript.Shell;$isCleared.Popup("Network Peer list cleared...",0,'[List Cleared]',0 + 4096) | Out-Null
+			} else {
+				$dontClear=New-Object -ComObject Wscript.Shell;$dontClear.Popup("Continuing Scan in Normal Mode...",0,'[Process Aborted]',0 + 4096) | Out-Null
+			}
 		}
 	}
 	$Scan.IsEnabled = $false
