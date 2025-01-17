@@ -641,6 +641,9 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 			</BeginStoryboard>
 		</EventTrigger>
 	</Window.Triggers>
+	<Window.TaskbarItemInfo>
+		<TaskbarItemInfo/>
+	</Window.TaskbarItemInfo>
 </Window>
 '@
 
@@ -688,7 +691,7 @@ $Main.Add_Closing({
 	})
 })
 
-# Extract and set icons
+# Extract and set icons for buttons
 $icons = @(
 	@{Index = 34; ButtonName = "btnRDP"},
 	@{Index = 13; ButtonName = "btnWebInterface"},
@@ -712,6 +715,20 @@ foreach ($icon in $icons) {
 		$button.Content = $image
 	}
 }
+
+# Extract and set icon for window, taskbar, and system tray
+$mainIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', 18, $true)
+$bitmapSource = [System.IconExtractor]::IconToBitmapSource($mainIcon)
+# Set Window Icon
+$Main.Icon = $bitmapSource
+# Set Taskbar Icon
+$Main.TaskbarItemInfo.Overlay = $bitmapSource
+$Main.TaskbarItemInfo.Description = $AppId
+# Set System Tray Icon
+$SysTrayIcon = New-Object System.Windows.Forms.NotifyIcon
+$SysTrayIcon.Icon = $icon
+$SysTrayIcon.Text = $AppId
+$SysTrayIcon.Visible = $false
 
 $btnRDP.Add_Click({
 	$btnRDP.BorderThickness = "0"
