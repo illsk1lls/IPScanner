@@ -707,13 +707,13 @@ $Main.Add_Closing({
 
 # Extract and set icons for buttons
 $icons = @(
-	@{Index = 34; ButtonName = "btnRDP"},
-	@{Index = 13; ButtonName = "btnWebInterface"},
-	@{Index = 266; ButtonName = "btnShare"}
+	@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ButtonName = "btnRDP"},
+	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ButtonName = "btnWebInterface"},
+	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ButtonName = "btnShare"}
 )
 
 foreach ($icon in $icons) {
-	$extractedIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', $icon.Index, $true)
+	$extractedIcon = [System.IconExtractor]::Extract($icon.File, $icon.Index, $true)
 
 	if ($extractedIcon) {
 		$bitmapSource = [System.IconExtractor]::IconToBitmapSource($extractedIcon)
