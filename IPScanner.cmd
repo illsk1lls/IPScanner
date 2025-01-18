@@ -100,7 +100,7 @@ function Get-HostInfo {
 function Update-Progress {
 	param ($value, $text)
 	$Progress.Value = $value
-	$BarText.Content = $text
+	$BarText.Text = $text
 	Update-uiMain
 }
 
@@ -149,7 +149,7 @@ function scanProcess {
 		function List-Machines {
 			Update-uiBackground{
 				$Progress.Value = "0"
-				$BarText.Content = 'Resolving Remote Hostnames'
+				$BarText.Text = 'Identifying Devices'
 			}
 
 			if($arpInit){
@@ -263,7 +263,10 @@ function scanProcess {
 
 			# After all jobs are done, reset the scan button
 			Update-uiBackground{
-				$BarText.Content = 'Scan'
+				# Hide ProgressBar, show Button after scan completes
+				$Progress.Visibility = 'Collapsed'
+				$Scan.Visibility = 'Visible'
+				$BarText.Text = ''
 				$Scan.IsEnabled = $true
 				$Progress.Value = 0
 			}
@@ -516,9 +519,9 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 						<Condition Property="IsSelected" Value="true" />
 						<Condition Property="Selector.IsSelectionActive" Value="true" />
 					</MultiTrigger.Conditions>
-				<Setter Property="Background" Value="{x:Static SystemColors.ControlDarkDarkBrush}" />
-				<Setter Property="Foreground" Value="#000000" />
-				<Setter Property="FontWeight" Value="Bold"/>
+					<Setter Property="Background" Value="{x:Static SystemColors.ControlDarkDarkBrush}" />
+					<Setter Property="Foreground" Value="#000000" />
+					<Setter Property="FontWeight" Value="Bold"/>
 				</MultiTrigger>
 			</Style.Triggers>
 		</Style>
@@ -592,19 +595,22 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 		</Style>
 	</Window.Resources>
 	<Grid Margin="0,0,50,0">
-		<Button Name="Scan" Background="#000000" Foreground="#000000" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,9,0,0" Template="{StaticResource NoMouseOverButtonTemplate}">
-			<Grid>
-				<ProgressBar Name="Progress" Foreground="#FF00BFFF" Background="#777777" Value="0" Maximum="100" Width="775" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
-				<Label Name="BarText" Foreground="#000000" FontWeight="Bold" Content="Scan" Width="250" Height="30" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
-			</Grid>
-		</Button>
+		<Grid Name="ScanContainer" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,9,0,0">
+			<Button Name="Scan" Content="Scan" Background="#777777" Foreground="#000000" FontWeight="Bold" Width="777" Height="30" Template="{StaticResource NoMouseOverButtonTemplate}">
+				<Button.BorderBrush>
+					<SolidColorBrush x:Name="CycleBrush" Color="White"/>
+				</Button.BorderBrush>
+			</Button>
+			<ProgressBar Name="Progress" Foreground="#FF00BFFF" Background="#777777" Value="0" Maximum="100" Width="777" Height="30" Visibility="Collapsed"/>
+			<TextBlock Name="BarText" Foreground="#000000" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+		</Grid>
 		<ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
 			<ListView.View>
 				<GridView>
-					<GridViewColumn Header= "MAC Address" DisplayMemberBinding ="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-					<GridViewColumn Header= "Vendor" DisplayMemberBinding ="{Binding Vendor}" Width="250" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-					<GridViewColumn Header= "IP Address" DisplayMemberBinding ="{Binding IPaddress}" Width="140" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-					<GridViewColumn Header= "Host Name" DisplayMemberBinding ="{Binding HostName}" Width="314" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+					<GridViewColumn Header="MAC Address" DisplayMemberBinding="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+					<GridViewColumn Header="Vendor" DisplayMemberBinding="{Binding Vendor}" Width="250" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+					<GridViewColumn Header="IP Address" DisplayMemberBinding="{Binding IPaddress}" Width="140" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+					<GridViewColumn Header="Host Name" DisplayMemberBinding="{Binding HostName}" Width="314" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
 				</GridView>
 			</ListView.View>
 		</ListView>
@@ -633,10 +639,14 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 		</Canvas>
 	</Grid>
 	<Window.Triggers>
-		<EventTrigger RoutedEvent="Loaded">
+		<EventTrigger RoutedEvent="Window.Loaded">
 			<BeginStoryboard>
-				<Storyboard Duration="00:00:1" Storyboard.TargetProperty="Opacity">
-					<DoubleAnimation From="0" To="1"/>
+				<Storyboard>
+					<ColorAnimationUsingKeyFrames Storyboard.TargetName="CycleBrush" Storyboard.TargetProperty="Color" RepeatBehavior="Forever" Duration="0:0:6">
+						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:0"/>
+						<LinearColorKeyFrame Value="#FF00BFFF" KeyTime="0:0:3"/>
+						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:6"/>
+					</ColorAnimationUsingKeyFrames>
 				</Storyboard>
 			</BeginStoryboard>
 		</EventTrigger>
@@ -718,11 +728,11 @@ foreach ($icon in $icons) {
 
 # Extract and set icon for window and taskbar
 $mainIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', 18, $true)
-$bitmapSource = [System.IconExtractor]::IconToBitmapSource($mainIcon)
+$mainIconBitmap = [System.IconExtractor]::IconToBitmapSource($mainIcon)
 # Set Window Icon
-$Main.Icon = $bitmapSource
+$Main.Icon = $mainIconBitmap
 # Set Taskbar Icon
-$Main.TaskbarItemInfo.Overlay = $bitmapSource
+$Main.TaskbarItemInfo.Overlay = $mainIconBitmap
 $Main.TaskbarItemInfo.Description = $AppId
 
 $btnRDP.Add_Click({
@@ -804,6 +814,29 @@ $listView.Add_MouseLeftButtonDown({
 	$listView.SelectedItems.Clear()
 })
 
+# Variable to track if Ctrl is down
+$global:CtrlIsDown = $false
+
+# KeyDown event handler
+$Main.Add_KeyDown({
+	if ($_.Key -eq 'LeftCtrl' -or $_.Key -eq 'RightCtrl') {
+		$global:CtrlIsDown = $true
+		if($Scan.IsEnabled){
+			$Scan.Content = 'Clear ARP Cache'
+		}
+	}
+})
+
+# KeyUp event handler
+$Main.Add_KeyUp({
+	if ($_.Key -eq 'LeftCtrl' -or $_.Key -eq 'RightCtrl') {
+		$global:CtrlIsDown = $false
+		if($Scan.IsEnabled){
+			$Scan.Content = 'Scan'
+		}
+	}
+})
+
 # Ensure clean ListView
 if($listview.Items){
 	$listview.Items.Clear()
@@ -811,22 +844,17 @@ if($listview.Items){
 
 # Define Scan Button Actions
 $Scan.Add_MouseEnter({
-	$Progress.Background = '#EEEEEE'
-	$BarText.Foreground = '#000000'
+	$Scan.Background = '#EEEEEE'
 })
 
 $Scan.Add_MouseLeave({
-	$Progress.Background = '#777777'
-	$BarText.Foreground = '#000000'
+	$Scan.Background = '#777777'
 })
 
 $Scan.Add_Click({
 	# If CTRL key is held while clicking the Scan button, offer to clear ARP cache as Admin prior to Scan process
-	$CtrlKey = '0x11'
-	$CheckCtrlHeldDuringScan='[DllImport("user32.dll", CharSet=CharSet.Auto, ExactSpelling=true)]public static extern short GetAsyncKeyState(int virtualKeyCode);'
-	Add-Type -MemberDefinition $CheckCtrlHeldDuringScan -Name Keyboard -Namespace PsOneApi
-	if([bool]([PsOneApi.Keyboard]::GetAsyncKeyState($CtrlKey) -eq -32767)){
-	$osInfo = Get-CimInstance Win32_OperatingSystem
+	if ($global:CtrlIsDown) {
+		$osInfo = Get-CimInstance Win32_OperatingSystem
 		if ($osInfo.Caption -match "Server") {
 			$restricted=New-Object -ComObject Wscript.Shell;$restricted.Popup("This option is not available for Windows Servers.`n`nPlease clear your ARP Cache manually.",0,'[Restricted Feature]',0 + 4096) | Out-Null
 		} else {
@@ -840,9 +868,14 @@ $Scan.Add_Click({
 		}
 	}
 	$Scan.IsEnabled = $false
+	$Scan.Content = 'Scan'
 	$listView.Items.Clear()
 	$hostNameColumn.Width = 314
-	$BarText.Content = 'Getting localHost Info'
+	# Make ProgressBar visible, hide Button
+	$Scan.Visibility = 'Collapsed'
+	$Progress.Visibility = 'Visible'
+	$Progress.Value = 0	 # Reset progress bar
+	$BarText.Text = 'Getting localHost Info'
 	Update-uiMain
 	Get-HostInfo
 	$Main.Title="$AppId `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
