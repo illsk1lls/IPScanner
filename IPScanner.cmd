@@ -730,12 +730,15 @@ foreach ($icon in $icons) {
 	}
 }
 
-# Extract and set icon for window and taskbar
-$mainIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', 18, $true)
-$mainIconBitmap = [System.IconExtractor]::IconToBitmapSource($mainIcon)
+# This icon is shown on the Scan button if either the Left or Right CTRL key is held
 $adminIcon = [System.IconExtractor]::Extract('C:\Windows\System32\imageres.dll', 73, $true)
 $scanAdminIcon.Source = [System.IconExtractor]::IconToBitmapSource($adminIcon)
 $scanAdminIcon.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+
+
+# Extract and set icon for window and taskbar
+$mainIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', 18, $true)
+$mainIconBitmap = [System.IconExtractor]::IconToBitmapSource($mainIcon)
 
 # Set Window Icon
 $Main.Icon = $mainIconBitmap
