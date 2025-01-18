@@ -870,10 +870,11 @@ $Scan.Add_Click({
 			$restricted=New-Object -ComObject Wscript.Shell;$restricted.Popup("This option is not available for Windows Servers.`n`nPlease clear your ARP Cache manually.",0,'[Restricted Feature]',0 + 4096) | Out-Null
 		} else {
 			try{
-			Start-Process -Verb RunAs powershell -WindowStyle Minimized -ArgumentList '-Command "& {Remove-NetNeighbor -InterfaceAlias * -Confirm:$false}"'
-			$isCleared=New-Object -ComObject Wscript.Shell;$isCleared.Popup("Cached peer list cleared...",0,'[List Cleared]',0 + 4096) | Out-Null
+				Start-Process -Verb RunAs powershell -WindowStyle Minimized -ArgumentList '-Command "& {Remove-NetNeighbor -InterfaceAlias * -Confirm:$false}"'
+				$listView.Items.Clear()
+				$isCleared=New-Object -ComObject Wscript.Shell;$isCleared.Popup("Cached peer list cleared...",0,'[List Cleared]',0 + 4096) | Out-Null
 			}catch{
-			$dontClear=New-Object -ComObject Wscript.Shell;$dontClear.Popup("No action was taken...",0,'[Process Aborted]',0 + 4096) | Out-Null
+				$dontClear=New-Object -ComObject Wscript.Shell;$dontClear.Popup("No action was taken...",0,'[Process Aborted]',0 + 4096) | Out-Null
 			}
 		}
 		$scanButtonText.Text = 'Scan'
