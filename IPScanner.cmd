@@ -210,7 +210,6 @@ function scanProcess {
 						}
 					} else {
 						Update-uiBackground{
-							if ($i -eq 0) { $listView.Items.Clear() }  # Clear only once at the start
 							$listView.Items.Add([pscustomobject]@{'MACaddress'="$myMac";'Vendor'="$myVendor";'IPaddress'="$internalIP";'HostName'="$hostName (This Device)"})
 							$listView.Items.Add([pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"})
 							$Progress.Value = ($i * (100 / $totalItems))
@@ -229,7 +228,6 @@ function scanProcess {
 				if ($ip -ne $internalIP) {
 					$hostnameJob = Start-Job -ScriptBlock {
 						param($ip, $gateway)
-						$timeoutSeconds = 5 # Adjust this value as needed
 						$resolvedName = try {
 							$result = Resolve-DnsName -Name $ip -Server $gateway -ErrorAction Stop
 							$result.NameHost
@@ -596,7 +594,13 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 	</Window.Resources>
 	<Grid Margin="0,0,50,0">
 		<Grid Name="ScanContainer" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,9,0,0">
-			<Button Name="Scan" Content="Scan" Background="#777777" Foreground="#000000" FontWeight="Bold" Width="777" Height="30" Template="{StaticResource NoMouseOverButtonTemplate}">
+			<Button Name="Scan" Width="777" Height="30" Background="#777777" Foreground="#000000" FontWeight="Bold" Template="{StaticResource NoMouseOverButtonTemplate}">
+				<Button.Content>
+					<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+						<TextBlock Name="ScanButtonText" Text="Scan" Foreground="#000000" FontWeight="Bold" />
+						<Image Name="scanAdminIcon" Width="16" Height="16" Margin="5,0,0,0" Visibility="Collapsed"/>
+					</StackPanel>
+				</Button.Content>
 				<Button.BorderBrush>
 					<SolidColorBrush x:Name="CycleBrush" Color="White"/>
 				</Button.BorderBrush>
@@ -729,6 +733,10 @@ foreach ($icon in $icons) {
 # Extract and set icon for window and taskbar
 $mainIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', 18, $true)
 $mainIconBitmap = [System.IconExtractor]::IconToBitmapSource($mainIcon)
+$adminIcon = [System.IconExtractor]::Extract('C:\Windows\System32\imageres.dll', 73, $true)
+$scanAdminIcon.Source = [System.IconExtractor]::IconToBitmapSource($adminIcon)
+$scanAdminIcon.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+
 # Set Window Icon
 $Main.Icon = $mainIconBitmap
 # Set Taskbar Icon
@@ -822,7 +830,8 @@ $Main.Add_KeyDown({
 	if ($_.Key -eq 'LeftCtrl' -or $_.Key -eq 'RightCtrl') {
 		$global:CtrlIsDown = $true
 		if($Scan.IsEnabled){
-			$Scan.Content = 'Clear ARP Cache'
+			$scanButtonText.Text = 'Clear Cached Peer List'
+			$scanAdminIcon.Visibility = 'Visible'
 		}
 	}
 })
@@ -832,7 +841,8 @@ $Main.Add_KeyUp({
 	if ($_.Key -eq 'LeftCtrl' -or $_.Key -eq 'RightCtrl') {
 		$global:CtrlIsDown = $false
 		if($Scan.IsEnabled){
-			$Scan.Content = 'Scan'
+			$scanButtonText.Text = 'Scan'
+			$scanAdminIcon.Visibility = 'Collapsed'
 		}
 	}
 })
@@ -854,36 +864,40 @@ $Scan.Add_MouseLeave({
 $Scan.Add_Click({
 	# If CTRL key is held while clicking the Scan button, offer to clear ARP cache as Admin prior to Scan process
 	if ($global:CtrlIsDown) {
+		$Scan.IsEnabled = $false
 		$osInfo = Get-CimInstance Win32_OperatingSystem
 		if ($osInfo.Caption -match "Server") {
 			$restricted=New-Object -ComObject Wscript.Shell;$restricted.Popup("This option is not available for Windows Servers.`n`nPlease clear your ARP Cache manually.",0,'[Restricted Feature]',0 + 4096) | Out-Null
 		} else {
-			$clearCache=New-Object -ComObject Wscript.Shell;$doClearCache=$clearCache.Popup("Do you want to clear the cached peer list before scanning?",0,'[Admin Required]',1 + 4096)
-			if($doClearCache -eq 1){
-				Start-Process -Verb RunAs powershell -WindowStyle Minimized -ArgumentList '-Command "& {Remove-NetNeighbor -InterfaceAlias * -Confirm:$false}"'
-				$isCleared=New-Object -ComObject Wscript.Shell;$isCleared.Popup("Network Peer list cleared...",0,'[List Cleared]',0 + 4096) | Out-Null
-			} else {
-				$dontClear=New-Object -ComObject Wscript.Shell;$dontClear.Popup("Continuing Scan in Normal Mode...",0,'[Process Aborted]',0 + 4096) | Out-Null
+			try{
+			Start-Process -Verb RunAs powershell -WindowStyle Minimized -ArgumentList '-Command "& {Remove-NetNeighbor -InterfaceAlias * -Confirm:$false}"'
+			$isCleared=New-Object -ComObject Wscript.Shell;$isCleared.Popup("Cached peer list cleared...",0,'[List Cleared]',0 + 4096) | Out-Null
+			}catch{
+			$dontClear=New-Object -ComObject Wscript.Shell;$dontClear.Popup("No action was taken...",0,'[Process Aborted]',0 + 4096) | Out-Null
 			}
 		}
+		$scanButtonText.Text = 'Scan'
+		$scanAdminIcon.Visibility = 'Collapsed'
+		$Scan.IsEnabled = $true
+		$global:CtrlIsDown = $false
+	} else {
+		$Scan.IsEnabled = $false
+		$listView.Items.Clear()
+		$hostNameColumn.Width = 314
+		# Make ProgressBar visible, hide Button
+		$Scan.Visibility = 'Collapsed'
+		$Progress.Visibility = 'Visible'
+		$Progress.Value = 0	 # Reset progress bar
+		$BarText.Text = 'Getting localHost Info'
+		Update-uiMain
+		Get-HostInfo
+		$Main.Title="$AppId `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
+		Update-uiMain
+		Scan-Subnet
+		waitForResponses
+		scanProcess
+		Update-uiMain
 	}
-	$Scan.IsEnabled = $false
-	$Scan.Content = 'Scan'
-	$listView.Items.Clear()
-	$hostNameColumn.Width = 314
-	# Make ProgressBar visible, hide Button
-	$Scan.Visibility = 'Collapsed'
-	$Progress.Visibility = 'Visible'
-	$Progress.Value = 0	 # Reset progress bar
-	$BarText.Text = 'Getting localHost Info'
-	Update-uiMain
-	Get-HostInfo
-	$Main.Title="$AppId `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
-	Update-uiMain
-	Scan-Subnet
-	waitForResponses
-	scanProcess
-	Update-uiMain
 })
 
 # Show Window
