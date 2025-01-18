@@ -716,7 +716,7 @@ foreach ($icon in $icons) {
 	}
 }
 
-# Extract and set icon for window, taskbar, and system tray
+# Extract and set icon for window and taskbar
 $mainIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', 18, $true)
 $bitmapSource = [System.IconExtractor]::IconToBitmapSource($mainIcon)
 # Set Window Icon
@@ -724,11 +724,6 @@ $Main.Icon = $bitmapSource
 # Set Taskbar Icon
 $Main.TaskbarItemInfo.Overlay = $bitmapSource
 $Main.TaskbarItemInfo.Description = $AppId
-# Set System Tray Icon
-$SysTrayIcon = New-Object System.Windows.Forms.NotifyIcon
-$SysTrayIcon.Icon = $icon
-$SysTrayIcon.Text = $AppId
-$SysTrayIcon.Visible = $false
 
 $btnRDP.Add_Click({
 	$btnRDP.BorderThickness = "0"
