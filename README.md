@@ -9,6 +9,6 @@ For use with basic networks to get an up to date list of client: MAC Address, Ve
 
 External IP Address and Domain are also displayed in the titlebar after initiating a scan<br>
 
-Double-Clicking a listed item will attempt to browse to that item, using the first available option (In the following order): HTTPS \>\> HTTP \>\> BrowseShare<br>
+Double-clicking a listed item will give you a popup showing available connection options to that device.  Clickable buttons will appear for available options. <br>
 
-**If you wish to clear your ARP Cache prior to scanning the network, hold the \[Ctrl\] key while clicking the Scan button (Note: Clearing ARP Cache requires Admin rights)**
+**If you wish to clear your cached list of network peers (ARP Cache) prior to scanning the network, hold the \[Ctrl\] key while clicking the Scan button (Note: Clearing network peer cache requires Admin rights)**
