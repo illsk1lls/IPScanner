@@ -11,4 +11,4 @@ External IP Address and Domain are also displayed in the titlebar after initiati
 
 Double-clicking a listed item will give you a popup showing available connection options to that device.  Clickable buttons will appear for available options. <br>
 
-**If you wish to clear your cached list of network peers (ARP Cache) prior to scanning the network, hold the \[CTRL\] key while clicking the Scan button (Note: Clearing network peer cache requires Admin rights, while normal scanning does not.)**
+**If you wish to clear your cached list of network peers (ARP Cache) prior to scanning the network, hold the \[CTRL\] key while clicking the Scan button (Note: Clearing network peer cache requires Admin rights, while normal scanning/usage does not.)**
