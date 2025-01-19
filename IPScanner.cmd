@@ -142,17 +142,19 @@ function scanProcess {
 			param($action)
 			$Main.Dispatcher.Invoke([action]$action, [Windows.Threading.DispatcherPriority]::Background)
 		}
+
 		function Get-MacVendor($mac) {
 			# Get Vendor via Mac (thanks to u/mprz)
 			try {
 				$ProgressPreference = 'SilentlyContinue'
-				$response = irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get -TimeoutSec 8
+				$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
 				$ProgressPreference = 'Continue'
 				return $response
 			} catch {
 				return $null
 			}
 		}
+
 		function List-Machines {
 			Update-uiBackground{
 				$Progress.Value = "0"
@@ -225,7 +227,7 @@ function scanProcess {
 					$vendorTask = Start-Job -ScriptBlock {
 						param($mac)
 						$ProgressPreference = 'SilentlyContinue'
-						$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get -TimeoutSec 8)
+						$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
 						$ProgressPreference = 'SilentlyContinue'
 						if([string]::IsNullOrEmpty($response.Company)){
 							return $null
@@ -236,7 +238,29 @@ function scanProcess {
 					$asyncTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
 					$vendorTasks[$ip] = $vendorTask
 
+
 					# Immediately check for any completed tasks
+					foreach ($ipCheck in @($vendorTasks.Keys)) {
+						$vendorTask = $vendorTasks[$ipCheck]
+						if ($vendorTask.State -eq "Completed") {
+							$result = Receive-Job -Job $vendorTask
+							$vendorResult = if ($result -and $result.Company) {
+								$result.Company.substring(0, [System.Math]::Min(35, $result.Company.Length))
+							} else {
+								'Unable to Identify'
+							}
+							Update-uiBackground{
+								foreach ($item in $listView.Items) {
+									if ($item.IPaddress -eq $ipCheck) {
+										$item.Vendor = $vendorResult
+										$listView.Items.Refresh()
+									}
+								}
+							}
+							$vendorTasks.Remove($ipCheck)
+						}
+					}
+
 					foreach ($ipCheck in @($asyncTasks.Keys)) {
 						$taskObj = $asyncTasks[$ipCheck]
 						if ($taskObj.Task.IsCompleted) {
@@ -256,27 +280,6 @@ function scanProcess {
 							$asyncTasks.Remove($ipCheck)
 						}
 					}
-					foreach ($ipCheck in @($vendorTasks.Keys)) {
-						$vendorTask = $vendorTasks[$ipCheck]
-						if ($vendorTask.State -eq "Completed") {
-							$result = Receive-Job -Job $vendorTask
-							$vendorResult = if ($result -and $result.Company) {
-								$result.Company.substring(0, [System.Math]::Min(35, $result.Company.Length))
-							} else {
-								'Unable to Identify'
-							}
-							Update-uiBackground{
-								foreach ($item in $listView.Items) {
-									if ($item.IPaddress -eq $ipCheck) {
-										$item.Vendor = $vendorResult
-										$listView.Items.Refresh()
-									}
-								}
-							}
-							Remove-Job -Job $vendorTask
-							$vendorTasks.Remove($ipCheck)
-						}
-					}
 				}
 				$i++
 				if ($i -eq 19) {
@@ -284,21 +287,20 @@ function scanProcess {
 						$hostNameColumn.Width = 300
 					}
 				}
-			Start-Sleep -Milliseconds 150
+				Start-Sleep -Milliseconds 200
 			}
 		}
-		List-Machines
-		# Check job completion status
-		$allJobsCompleted = $false
-		$totalJobs = $asyncTasks.Count + $vendorTasks.Count
-		while (-not $allJobsCompleted) {
-			$jobsCompleted = 0
 
+		List-Machines
+
+		# Check job completion status
+		$totalJobs = $asyncTasks.Count + $vendorTasks.Count
+		while($totaljobs -ge 1) {
 			# Check if DNS resolutions are done
 			foreach ($ipCheck in @($asyncTasks.Keys)) {
 				$taskObj = $asyncTasks[$ipCheck]
 				if ($taskObj.Task.IsCompleted) {
-					$entry = $taskObj.Task.Result
+					$entry = Receive-Job -Job $taskObj -Wait -AutoRemoveJob
 					Update-uiBackground{
 						foreach ($item in $listView.Items) {
 							if ($item.IPaddress -eq $ipCheck) {
@@ -312,7 +314,6 @@ function scanProcess {
 						}
 					}
 					$asyncTasks.Remove($ipCheck)
-					$jobsCompleted++
 				}
 			}
 
@@ -334,9 +335,7 @@ function scanProcess {
 							}
 						}
 					}
-					Remove-Job -Job $vendorTask
 					$vendorTasks.Remove($ipCheck)
-					$jobsCompleted++
 				}
 			}
 
@@ -345,27 +344,65 @@ function scanProcess {
 			Update-uiBackground{
 				$Progress.Value = $progressPercentage
 			}
+			Start-Sleep -Milliseconds 50
+		}
 
-			# Check if all jobs are completed
-			if ($asyncTasks.Count -eq 0 -and $vendorTasks.Count -eq 0) {
-				$allJobsCompleted = $true
-			} else {
-				Start-Sleep -Milliseconds 10
+		# Temp bugfix for unidentified runaway, last listitem background job(s) always closes before returning a value(s)
+		$lastItem = $listView.Items | Select-Object -Last 1
+		if ($lastItem) {
+			$lastIP = $lastItem.IPaddress
+			$lastMAC = $lastItem.MACaddress
+
+			# Check Vendor
+			if ($lastItem.Vendor -eq "Identifying...") {
+				# Manual vendor lookup for the last IP only if needed
+				$lastVendor = Get-MacVendor $lastMAC
+				$lastVendorResult = if ($lastVendor -and $lastVendor.Company) {
+					$lastVendor.Company.substring(0, [System.Math]::Min(35, $lastVendor.Company.Length))
+				} else {
+					'Unable to Identify'
+				}
+				Update-uiBackground{
+					$lastItem.Vendor = $lastVendorResult
+				}
+			}
+
+			# Check HostName
+			if ($lastItem.HostName -eq "Resolving...") {
+				# Manual hostname lookup for the last IP only if needed
+				try {
+					$dnsEntry = [System.Net.Dns]::GetHostEntryAsync($lastIP).Result
+					$lastHostName = if ($dnsEntry.HostName) { $dnsEntry.HostName } else { "Unable to Resolve" }
+				} catch {
+					$lastHostName = "Unable to Resolve"
+				}
+				Update-uiBackground{
+					$lastItem.HostName = $lastHostName
+				}
+			}
+
+			# Refresh the ListView if any updates were made
+			Update-uiBackground{
+				$listView.Items.Refresh()
 			}
 		}
 
-		# Update orphans
+		# Update any leftover orphans
 		Update-uiBackground{
 			foreach ($item in $listView.Items) {
-				if ([string]::IsNullOrEmpty($item.HostName) -or $item.HostName -eq "Resolving...") {
-					$item.HostName = "Unable to Resolve"
-				}
-				if ([string]::IsNullOrEmpty($item.Vendor) -or $item.Vendor -eq "Identifying...") {
+				if ($item.Vendor -eq "Identifying...") {
 					$item.Vendor = "Unable to Identify"
+				}
+				if ($item.HostName -eq "Resolving...") {
+					$item.HostName = "Unable to Resolve"
 				}
 			}
 			$listView.Items.Refresh()
 		}
+
+		# Clean up jobs
+		Remove-Job -Job $asyncTasks.Values -Force
+		Remove-Job -Job $vendorTasks.Values -Force
 
 		# Final update after all jobs are completed
 		Update-uiBackground{
