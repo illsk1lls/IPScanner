@@ -287,7 +287,7 @@ function scanProcess {
 						$hostNameColumn.Width = 300
 					}
 				}
-				Start-Sleep -Milliseconds 200
+				Start-Sleep -Milliseconds 420
 			}
 		}
 
