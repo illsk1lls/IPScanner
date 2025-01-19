@@ -281,15 +281,6 @@ function scanProcess {
 					}
 				}
 			}
-			# After processing, reset the scan button
-			Update-uiBackground{
-				# Hide ProgressBar, show Button after scan completes
-				$Progress.Visibility = 'Collapsed'
-				$Scan.Visibility = 'Visible'
-				$BarText.Text = ''
-				$Scan.IsEnabled = $true
-				$Progress.Value = 0
-			}
 		}
 		List-Machines
 		# Check job completion status
