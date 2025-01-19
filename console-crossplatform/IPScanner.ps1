@@ -1,6 +1,6 @@
 function Get-HostInfo {
 	# Hostname
-	$global:hostName = hostName
+	$global:hostName = [System.Net.Dns]::GetHostName()
 
 	# Check Internet Connection and Get External IP
 	$ProgressPreference = 'SilentlyContinue'
@@ -97,11 +97,15 @@ function List-Machines {
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
 		$mac = $line.LinkLayerAddress.Replace('-',':')
-		$name = (Resolve-DnsName -Name $ip -Server $gateway -ErrorAction SilentlyContinue).NameHost
-
-		# Check if $name is null or empty since no DNS record was found
-  		if (!($name)) {
-  			$name = "Unable to Resolve"  
+		# Get Hostname
+		try{
+			$name = [System.Net.Dns]::GetHostEntry($ip).HostName
+		} catch {
+			$name = "Unable to Resolve"
+		} finally {
+			if ([string]::IsNullOrEmpty($name)) {
+				$name = "Unable to Resolve"  
+			}			
 		}
   
 		# Get Remote Device Vendor via Mac lookup
