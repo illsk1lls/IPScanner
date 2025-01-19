@@ -145,7 +145,9 @@ function scanProcess {
 		function Get-MacVendor($mac) {
 			# Get Vendor via Mac (thanks to u/mprz)
 			try {
+				$ProgressPreference = 'SilentlyContinue'
 				$response = irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get -TimeoutSec 8
+				$ProgressPreference = 'Continue'
 				return $response
 			} catch {
 				return $null
@@ -222,7 +224,9 @@ function scanProcess {
 					$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
 					$vendorTask = Start-Job -ScriptBlock {
 						param($mac)
+						$ProgressPreference = 'SilentlyContinue'
 						$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get -TimeoutSec 8)
+						$ProgressPreference = 'SilentlyContinue'
 						if([string]::IsNullOrEmpty($response.Company)){
 							return $null
 						} else {
@@ -988,13 +992,13 @@ $Scan.Add_Click({
 		$global:CtrlIsDown = $false
 	} else {
 		$Scan.IsEnabled = $false
-		$listView.Items.Clear()
-		$hostNameColumn.Width = 314
 		# Make ProgressBar visible, hide Button
 		$Scan.Visibility = 'Collapsed'
 		$Progress.Visibility = 'Visible'
 		$Progress.Value = 0
 		$BarText.Text = 'Getting localHost Info'
+		$listView.Items.Clear()
+		$hostNameColumn.Width = 314
 		Update-uiMain
 		Get-HostInfo
 		$Main.Title="$AppId `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
