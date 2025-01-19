@@ -145,7 +145,7 @@ function scanProcess {
 		function Get-MacVendor($mac) {
 			# Get Vendor via Mac (thanks to u/mprz)
 			try {
-				$response = irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get -TimeoutSec 5
+				$response = irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get -TimeoutSec 8
 				return $response
 			} catch {
 				return $null
@@ -222,7 +222,7 @@ function scanProcess {
 					$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
 					$vendorTask = Start-Job -ScriptBlock {
 						param($mac)
-						$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get -TimeoutSec 5)
+						$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get -TimeoutSec 8)
 						if([string]::IsNullOrEmpty($response.Company)){
 							return $null
 						} else {
@@ -358,8 +358,8 @@ function scanProcess {
 				if ([string]::IsNullOrEmpty($item.Vendor) -or $item.Vendor -eq "Identifying...") {
 					$item.Vendor = "Unable to Identify"
 				}
-				$listView.Items.Refresh()
 			}
+			$listView.Items.Refresh()
 		}
 
 		# Final update after all jobs are completed
