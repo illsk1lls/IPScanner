@@ -280,6 +280,7 @@ function scanProcess {
 						$hostNameColumn.Width = 300
 					}
 				}
+			Start-Sleep -Milliseconds 150
 			}
 		}
 		List-Machines
@@ -345,7 +346,7 @@ function scanProcess {
 			if ($asyncTasks.Count -eq 0 -and $vendorTasks.Count -eq 0) {
 				$allJobsCompleted = $true
 			} else {
-				Start-Sleep -Milliseconds 100
+				Start-Sleep -Milliseconds 10
 			}
 		}
 
