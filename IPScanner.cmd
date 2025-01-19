@@ -163,7 +163,7 @@ function scanProcess {
 				$arpOutput.Clear()
 			}
 			# Filter for Reachable or Stale states and select only IP and MAC address
-			$arpInit = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress
+			$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
 
 			# Convert IP Addresses from string to int by each section
 			$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
@@ -229,7 +229,6 @@ function scanProcess {
 							$response
 						}
 					} -ArgumentList $mac
-
 					$asyncTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
 					$vendorTasks[$ip] = $vendorTask
 
@@ -237,35 +236,22 @@ function scanProcess {
 					foreach ($ipCheck in @($asyncTasks.Keys)) {
 						$taskObj = $asyncTasks[$ipCheck]
 						if ($taskObj.Task.IsCompleted) {
-							try {
-								$entry = $taskObj.Task.Result
-								Update-uiBackground{
-									foreach ($item in $listView.Items) {
-										if ($item.IPaddress -eq $ipCheck) {
-											if ([string]::IsNullOrEmpty($entry.HostName)) {
-												$item.HostName = "Unable to Resolve"
-											} else {
-												$item.HostName = $entry.HostName
-											}
-											$listView.Items.Refresh()
-										}
-									}
-								}
-								$asyncTasks.Remove($ipCheck)
-							} catch {
-								Update-uiBackground{
-									foreach ($item in $listView.Items) {
-										if ($item.IPaddress -eq $ipCheck) {
+							$entry = $taskObj.Task.Result
+							Update-uiBackground{
+								foreach ($item in $listView.Items) {
+									if ($item.IPaddress -eq $ipCheck) {
+										if ([string]::IsNullOrEmpty($entry.HostName)) {
 											$item.HostName = "Unable to Resolve"
-											$listView.Items.Refresh()
+										} else {
+											$item.HostName = $entry.HostName
 										}
+										$listView.Items.Refresh()
 									}
 								}
-								$asyncTasks.Remove($ipCheck)
 							}
+							$asyncTasks.Remove($ipCheck)
 						}
 					}
-
 					foreach ($ipCheck in @($vendorTasks.Keys)) {
 						$vendorTask = $vendorTasks[$ipCheck]
 						if ($vendorTask.State -eq "Completed") {
@@ -295,7 +281,6 @@ function scanProcess {
 					}
 				}
 			}
-
 			# After processing, reset the scan button
 			Update-uiBackground{
 				# Hide ProgressBar, show Button after scan completes
@@ -307,6 +292,94 @@ function scanProcess {
 			}
 		}
 		List-Machines
+		# Check job completion status
+		$allJobsCompleted = $false
+		$totalJobs = $asyncTasks.Count + $vendorTasks.Count
+		while (-not $allJobsCompleted) {
+			$jobsCompleted = 0
+
+			# Check if DNS resolutions are done
+			foreach ($ipCheck in @($asyncTasks.Keys)) {
+				$taskObj = $asyncTasks[$ipCheck]
+				if ($taskObj.Task.IsCompleted) {
+					$entry = $taskObj.Task.Result
+					Update-uiBackground{
+						foreach ($item in $listView.Items) {
+							if ($item.IPaddress -eq $ipCheck) {
+								if ([string]::IsNullOrEmpty($entry.HostName)) {
+									$item.HostName = "Unable to Resolve"
+								} else {
+									$item.HostName = $entry.HostName
+								}
+								$listView.Items.Refresh()
+							}
+						}
+					}
+					$asyncTasks.Remove($ipCheck)
+					$jobsCompleted++
+				}
+			}
+
+			# Check if vendor lookups are done
+			foreach ($ipCheck in @($vendorTasks.Keys)) {
+				$vendorTask = $vendorTasks[$ipCheck]
+				if ($vendorTask.State -eq "Completed") {
+					$result = Receive-Job -Job $vendorTask
+					$vendorResult = if ($result -and $result.Company) {
+						$result.Company.substring(0, [System.Math]::Min(35, $result.Company.Length))
+					} else {
+						'Unable to Identify'
+					}
+					Update-uiBackground{
+						foreach ($item in $listView.Items) {
+							if ($item.IPaddress -eq $ipCheck) {
+								$item.Vendor = $vendorResult
+								$listView.Items.Refresh()
+							}
+						}
+					}
+					Remove-Job -Job $vendorTask
+					$vendorTasks.Remove($ipCheck)
+					$jobsCompleted++
+				}
+			}
+
+			# Update progress
+			$progressPercentage = if ($totalJobs -gt 0) { ($jobsCompleted / $totalJobs) * 100 } else { 100 }
+			Update-uiBackground{
+				$Progress.Value = $progressPercentage
+			}
+
+			# Check if all jobs are completed
+			if ($asyncTasks.Count -eq 0 -and $vendorTasks.Count -eq 0) {
+				$allJobsCompleted = $true
+			} else {
+				Start-Sleep -Milliseconds 100
+			}
+		}
+
+		# Update orphans
+		Update-uiBackground{
+			foreach ($item in $listView.Items) {
+				if ([string]::IsNullOrEmpty($item.HostName) -or $item.HostName -eq "Resolving...") {
+					$item.HostName = "Unable to Resolve"
+				}
+				if ([string]::IsNullOrEmpty($item.Vendor) -or $item.Vendor -eq "Identifying...") {
+					$item.Vendor = "Unable to Identify"
+				}
+				$listView.Items.Refresh()
+			}
+		}
+
+		# Final update after all jobs are completed
+		Update-uiBackground{
+			# Hide ProgressBar, show Button after scan completes
+			$Progress.Visibility = 'Collapsed'
+			$Scan.Visibility = 'Visible'
+			$BarText.Text = ''
+			$Scan.IsEnabled = $true
+			$Progress.Value = 0
+		}
 	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac).AddArgument($hostNameColumn)
 	$backgroundThread.RunspacePool = $RunspacePool
 	$startScan = $backgroundThread.BeginInvoke()
@@ -928,7 +1001,7 @@ $Scan.Add_Click({
 		# Make ProgressBar visible, hide Button
 		$Scan.Visibility = 'Collapsed'
 		$Progress.Visibility = 'Visible'
-		$Progress.Value = 0	 # Reset progress bar
+		$Progress.Value = 0
 		$BarText.Text = 'Getting localHost Info'
 		Update-uiMain
 		Get-HostInfo
