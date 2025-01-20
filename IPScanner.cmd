@@ -649,7 +649,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 				</GridView>
 			</ListView.View>
 		</ListView>
-		<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,-20,0,0">
+		<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
 			<Border Width="350" Height="240" BorderThickness="0.70" BorderBrush="#FF00BFFF">
 				<Grid Background="Transparent">
 					<Grid.RowDefinitions>
