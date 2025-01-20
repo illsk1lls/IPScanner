@@ -404,15 +404,19 @@ function CheckConnectivity {
 	}
 
 	# Update button states based on connectivity results
-	$btnRDP.IsEnabled = $results.RDP -and $HostName -ne $tryToConnect
-	$btnRDP.Visibility = if ($btnRDP.IsEnabled) { 'Visible' } else { 'Collapsed' }
 
+	$btnShare.IsEnabled = ($results.SMBv2 -or $results.SMB) -and $HostName -ne $tryToConnect
+	$btnShare.Visibility = if ($btnShare.IsEnabled) { 'Visible' } else { 'Collapsed' }
+
+	if ($btnShare.Visibility -eq 'Visible') {$btnWebInterface.Margin = "0,0,25,0"} else {$btnWebInterface.Margin = "0,0,0,0"}
 	$btnWebInterface.IsEnabled = ($results.HTTP -or $results.HTTPS) -and $HostName -ne $tryToConnect
 	$btnWebInterface.Visibility = if ($btnWebInterface.IsEnabled) { 'Visible' } else { 'Collapsed' }
 	$global:httpAvailable = if ($results.HTTP) { 1 } else { 0 }
 
-	$btnShare.IsEnabled = ($results.SMBv2 -or $results.SMB) -and $HostName -ne $tryToConnect
-	$btnShare.Visibility = if ($btnShare.IsEnabled) { 'Visible' } else { 'Collapsed' }
+	if ($btnShare.Visibility -eq 'Visible' -or $btnWebInterface.Visibility -eq 'Visible') {$btnRDP.Margin = "0,0,25,0"} else {$btnRDP.Margin = "0,0,0,0"}
+	$btnRDP.IsEnabled = $results.RDP -and $HostName -ne $tryToConnect
+	$btnRDP.Visibility = if ($btnRDP.IsEnabled) { 'Visible' } else { 'Collapsed' }
+
 
 	# Show 'No Connections Found' if no services are available
 	$noConnectionsLabel.Visibility = if (-not $btnRDP.IsEnabled -and -not $btnWebInterface.IsEnabled -and -not $btnShare.IsEnabled) { 'Visible' } else { 'Collapsed' }
@@ -645,22 +649,22 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 				</GridView>
 			</ListView.View>
 		</ListView>
-		<Canvas Name="PopupCanvas" Background="#111111" Visibility="Hidden" Width="350" Height="140" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,10,0,0">
-			<Border Width="350" Height="140" BorderThickness="1" BorderBrush="#FF000000">
+		<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,-20,0,0">
+			<Border Width="350" Height="240" BorderThickness="0.70" BorderBrush="#FF00BFFF">
 				<Grid Background="Transparent">
 					<Grid.RowDefinitions>
 						<RowDefinition Height="Auto"/>
 						<RowDefinition Height="*"/>
 					</Grid.RowDefinitions>
 					<StackPanel Margin="10" Grid.Row="1">
-						<TextBlock Name="pHost" Foreground="#EEEEEE" FontWeight="Bold" Margin="10,-15,0,0"/>
-						<TextBlock Name="pIP" Foreground="#EEEEEE" Margin="10,0,0,0" />
-						<TextBlock Name="pMAC" Foreground="#EEEEEE" Margin="10,0,0,0" />
-						<TextBlock Name="pVendor" Foreground="#EEEEEE" Margin="10,0,0,0" />
-						<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,6,0,0">
-							<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#333333" IsEnabled="False" Background="Transparent" Margin="0,0,15,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-							<Button Name="btnWebInterface" Width="40" Height="32" ToolTip="Connect via Web Interface" BorderThickness="0" BorderBrush="#333333" IsEnabled="False" Background="Transparent" Margin="0,0,15,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-							<Button Name="btnShare" Width="40" Height="32" ToolTip="Connect via Share" BorderThickness="0" BorderBrush="#333333" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+						<TextBlock Name="pHost" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Margin="15,0,0,0"/>
+						<TextBlock Name="pIP" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
+						<TextBlock Name="pMAC" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
+						<TextBlock Name="pVendor" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
+						<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,35,0,0">
+							<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							<Button Name="btnWebInterface" Width="40" Height="32" ToolTip="Connect via Web Interface" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							<Button Name="btnShare" Width="40" Height="32" ToolTip="Connect via Share" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}"/>
 							<TextBlock Name="noConnectionsLabel" Text="No Connections Found" Foreground="#EEEEEE" FontSize="12" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,8,0,0"/>
 						</StackPanel>
 					</StackPanel>
@@ -778,7 +782,7 @@ $btnRDP.Add_Click({
 })
 
 $btnRDP.Add_MouseEnter({
-	$btnRDP.BorderThickness = "1"
+	$btnRDP.BorderThickness = ".75"
 })
 
 $btnRDP.Add_MouseLeave({
@@ -798,7 +802,7 @@ $btnWebInterface.Add_Click({
 })
 
 $btnWebInterface.Add_MouseEnter({
-	$btnWebInterface.BorderThickness = "1"
+	$btnWebInterface.BorderThickness = ".75"
 })
 
 $btnWebInterface.Add_MouseLeave({
@@ -812,7 +816,7 @@ $btnShare.Add_Click({
 })
 
 $btnShare.Add_MouseEnter({
-	$btnShare.BorderThickness = "1"
+	$btnShare.BorderThickness = ".75"
 })
 
 $btnShare.Add_MouseLeave({
