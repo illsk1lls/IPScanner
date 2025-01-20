@@ -426,7 +426,6 @@ function CheckConnectivity {
 $sortDirections = @{}
 $listViewSortColumn = {
 	param([System.Object]$sender, [System.EventArgs]$Event)
-
 	$SortPropertyName = $Event.OriginalSource.Column.DisplayMemberBinding.Path.Path
 
 	# Determine current direction, toggle if column has been sorted before
@@ -438,7 +437,6 @@ $listViewSortColumn = {
 			$sortDirections[$SortPropertyName] = $false	 # false for descending, true for ascending
 		}
 	}
-
 	$direction = if ($sortDirections[$SortPropertyName]) { "Ascending" } else { "Descending" }
 
 	# Sort items
