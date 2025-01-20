@@ -55,7 +55,7 @@ function Update-uiMain(){
 # Get Host Info
 function Get-HostInfo {
 	# Get Hostname
-	$global:hostName = hostname
+	$global:hostName = [System.Net.Dns]::GetHostName()
 
 	# Check internet connection and get external IP
 	$ProgressPreference = 'SilentlyContinue'
