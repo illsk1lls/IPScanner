@@ -282,7 +282,7 @@ function scanProcess {
 							}
 						}
 						Start-Sleep -Milliseconds 50
-					} while ($asyncTasks.Count -ge 5 -or $vendorTasks.Count -ge 5)
+					} while ($asyncTasks.Count -ge 8 -or $vendorTasks.Count -ge 8)
 				}
 				$i++
 				if ($i -eq 19) {
@@ -294,55 +294,6 @@ function scanProcess {
 		}
 
 		List-Machines
-
-		# Check job completion status
-		$jobsRemaining = $asyncTasks.Count + $vendorTasks.Count
-		while($jobsRemaining -ge 1) {
-		
-			# Check if DNS resolutions are done
-			foreach ($ipCheck in @($asyncTasks.Keys)) {
-				$taskObj = $asyncTasks[$ipCheck]
-				if ($taskObj.Task.IsCompleted) {
-					$entry = Receive-Job -Job $taskObj -Wait -AutoRemoveJob
-					Update-uiBackground{
-						foreach ($item in $listView.Items) {
-							if ($item.IPaddress -eq $ipCheck) {
-								if ([string]::IsNullOrEmpty($entry.HostName)) {
-									$item.HostName = "Unable to Resolve"
-								} else {
-									$item.HostName = $entry.HostName
-								}
-								$listView.Items.Refresh()
-							}
-						}
-					}
-					$asyncTasks.Remove($ipCheck)
-				}
-			}
-
-			# Check if vendor lookups are done
-			foreach ($ipCheck in @($vendorTasks.Keys)) {
-				$vendorTask = $vendorTasks[$ipCheck]
-				if ($vendorTask.State -eq "Completed") {
-					$result = Receive-Job -Job $vendorTask
-					$vendorResult = if ($result -and $result.Company) {
-						$result.Company.substring(0, [System.Math]::Min(35, $result.Company.Length))
-					} else {
-						'Unable to Identify'
-					}
-					Update-uiBackground{
-						foreach ($item in $listView.Items) {
-							if ($item.IPaddress -eq $ipCheck) {
-								$item.Vendor = $vendorResult
-								$listView.Items.Refresh()
-							}
-						}
-					}
-					$vendorTasks.Remove($ipCheck)
-				}
-			}
-			Start-Sleep -Milliseconds 50
-		}
 
 		# Temp bugfix for unidentified runaway, last listitem background job(s) always closes before returning a value(s)
 		$lastItem = $listView.Items | Select-Object -Last 1
