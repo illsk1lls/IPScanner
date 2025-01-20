@@ -52,47 +52,53 @@ function Update-uiMain(){
 	$Main.Dispatcher.Invoke([Windows.Threading.DispatcherPriority]::Background, [action]{})
 }
 
-# Get host machine information
+# Get Host Info
 function Get-HostInfo {
 	# Get Hostname
 	$global:hostName = hostname
 
 	# Check internet connection and get external IP
 	$ProgressPreference = 'SilentlyContinue'
-	$hotspotRedirectionTest = irm "http://www.msftncsi.com/ncsi.txt"
-	$global:externalIP = if ($hotspotRedirectionTest -eq "Microsoft NCSI") {
-		irm "http://ifconfig.me/ip"
-	} else {
-		"No Internet or Redirection"
+	try {
+		$ncsiCheck = Invoke-RestMethod "http://www.msftncsi.com/ncsi.txt"
+		if ($ncsiCheck -eq "Microsoft NCSI") {
+			$global:externalIP = Invoke-RestMethod "http://ifconfig.me/ip"
+		} else {
+			$global:externalIP = "No Internet or Redirection"
+		}
+	} catch {
+		$global:externalIP = "No Internet or Error"
 	}
 	$ProgressPreference = 'Continue'
 
-	# Find my gateway
-	$global:gateway = (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1).NextHop
-	$gatewayParts = $gateway -split '\.'
+	# Find gateway and internal IP
+	$route = Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1
+	$global:gateway = $route.NextHop
+	$gatewayParts = $global:gateway -split '\.'
 	$global:gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts[2])."
 
-	# Get my Internal IP
-	$global:internalIP = (Get-NetIPAddress | Where-Object {$_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -ne 'Loopback Pseudo-Interface 1' -and ($_.IPAddress -like "$gatewayPrefix*")}).IPAddress
+	$global:internalIP = (Get-NetIPAddress | Where-Object {
+		$_.AddressFamily -eq 'IPv4' -and
+		$_.InterfaceAlias -ne 'Loopback Pseudo-Interface 1' -and
+		$_.IPAddress -like "$global:gatewayPrefix*"
+	}).IPAddress
 
-	# Get current adapter type
-	$global:adapter = (Get-NetIPAddress -InterfaceAlias "*Ethernet*","*Wi-Fi*" -AddressFamily IPv4 | Where-Object { $_.IPAddress -like "$gatewayPrefix*" }).InterfaceAlias
+	# Get current adapter
+	$global:adapter = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
+		$_.InterfaceAlias -match 'Ethernet|Wi-Fi' -and
+		$_.IPAddress -like "$global:gatewayPrefix*"
+	}).InterfaceAlias
 
-	# Get my mac
-	$global:myMac = (Get-NetAdapter -Name $adapter).MacAddress.Replace('-',':')
-
-	# Convert subnet prefix to readable number
-	$prefixLength = (Get-NetIPAddress | Where-Object {$_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -ne 'Loopback Pseudo-Interface 1'} | Select-Object -First 1).PrefixLength
-	$subnetMask = ([System.Net.IPAddress]::Parse(($([Math]::Pow(2, $prefixLength)) - 1) * [Math]::Pow(2, 32 - $prefixLength))).GetAddressBytes() -join "."
+	# Get MAC address
+	$global:myMac = (Get-NetAdapter -Name $global:adapter).MacAddress -replace '-', ':'
 
 	# Get domain
-	$global:domain = (Get-WmiObject -Class Win32_ComputerSystem).Domain
+	$global:domain = (Get-CimInstance -ClassName Win32_ComputerSystem).Domain
 
 	# Mark empty as unknown
-	$hostData = @('hostName', 'externalIP', 'internalIP', 'adapter', 'subnetMask', 'gateway', 'domain')
-	foreach ($item in $hostData) {
-		if (-not (Get-Variable -Name $item -ValueOnly -ErrorAction SilentlyContinue)) {
-			Set-Variable -Name $item -Value 'Unknown' -Scope Global
+	foreach ($item in 'hostName', 'externalIP', 'internalIP', 'adapter', 'gateway', 'domain') {
+		if (-not $global:item) {
+			$global:item = 'Unknown'
 		}
 	}
 }
@@ -167,7 +173,7 @@ function scanProcess {
 				$arpOutput.Clear()
 			}
 			# Filter for Reachable or Stale states and select only IP and MAC address
-			$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
+			$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
 
 			# Convert IP Addresses from string to int by each section
 			$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
@@ -297,42 +303,38 @@ function scanProcess {
 
 		# Temp bugfix for unidentified runaway, last listitem background job(s) always closes before returning a value(s)
 		$lastItem = $listView.Items | Select-Object -Last 1
-		if ($lastItem) {
-			$lastIP = $lastItem.IPaddress
-			$lastMAC = $lastItem.MACaddress
-
-			# Check Vendor
-			if ($lastItem.Vendor -eq "Identifying...") {
-				# Manual vendor lookup for the last IP only if needed
-				$lastVendor = Get-MacVendor $lastMAC
-				$lastVendorResult = if ($lastVendor -and $lastVendor.Company) {
-					$lastVendor.Company.substring(0, [System.Math]::Min(35, $lastVendor.Company.Length))
-				} else {
-					'Unable to Identify'
-				}
-				Update-uiBackground{
-					$lastItem.Vendor = $lastVendorResult
-				}
+		$lastIP = $lastItem.IPaddress
+		$lastMAC = $lastItem.MACaddress
+		# Check Vendor
+		if ($lastItem.Vendor -eq "Identifying...") {
+			# Manual vendor lookup for the last IP only if needed
+			$lastVendor = Get-MacVendor $lastMAC
+			$lastVendorResult = if ($lastVendor -and $lastVendor.Company) {
+				$lastVendor.Company.substring(0, [System.Math]::Min(35, $lastVendor.Company.Length))
+			} else {
+				'Unable to Identify'
 			}
-
-			# Check HostName
-			if ($lastItem.HostName -eq "Resolving...") {
-				# Manual hostname lookup for the last IP only if needed
-				try {
-					$dnsEntry = [System.Net.Dns]::GetHostEntryAsync($lastIP).Result
-					$lastHostName = if ($dnsEntry.HostName) { $dnsEntry.HostName } else { "Unable to Resolve" }
-				} catch {
-					$lastHostName = "Unable to Resolve"
-				}
-				Update-uiBackground{
-					$lastItem.HostName = $lastHostName
-				}
-			}
-
-			# Refresh the ListView if any updates were made
 			Update-uiBackground{
-				$listView.Items.Refresh()
+				$lastItem.Vendor = $lastVendorResult
 			}
+		}
+		# Check HostName
+		if ($lastItem.HostName -eq "Resolving...") {
+			# Manual hostname lookup for the last IP only if needed
+			try {
+				$dnsEntry = [System.Net.Dns]::GetHostEntryAsync($lastIP).Result
+				$lastHostName = if ($dnsEntry.HostName) { $dnsEntry.HostName } else { "Unable to Resolve" }
+			} catch {
+				$lastHostName = "Unable to Resolve"
+			}
+			Update-uiBackground{
+				$lastItem.HostName = $lastHostName
+			}
+		}
+
+		# Refresh the ListView if any updates were made
+		Update-uiBackground{
+			$listView.Items.Refresh()
 		}
 
 		# Update any leftover orphans
@@ -371,153 +373,83 @@ function CheckConnectivity {
 	param (
 		[string]$selectedhost
 	)
-
 	if ($selectedhost -match ' \(This Device\)') {
-		$btnRDP.IsEnabled = $false
-		$btnRDP.Visibility = 'Collapsed'
-		$btnWebInterface.IsEnabled = $false
-		$btnWebInterface.Visibility = 'Collapsed'
-		$btnShare.IsEnabled = $false
-		$btnShare.Visibility = 'Collapsed'
+		# Disable all buttons for 'This Device'
+		@('btnRDP', 'btnWebInterface', 'btnShare') | ForEach-Object {
+			Get-Variable $_ -ValueOnly | ForEach-Object {
+				$_.IsEnabled = $false
+				$_.Visibility = 'Collapsed'
+			}
+		}
 		$noConnectionsLabel.Text = 'This Device'
 		$noConnectionsLabel.Visibility = 'Visible'
-	} else {
-		$global:tryToConnect = $selectedhost.Replace(' (This Device)','')
-		$noConnectionsLabel.Text = 'No Connections Found'
-
-		# Check if WebInterface exists HTTP then HTTPS
-		$TCPClientHTTP = [System.Net.Sockets.TcpClient]::new()
-		$ResultHTTP = $TCPClientHTTP.ConnectAsync($tryToConnect, 80).Wait(250)
-		$TCPClientHTTP.Close()
-		if(!($ResultHTTP)){
-			$TCPClientHTTPS = [System.Net.Sockets.TcpClient]::new()
-			$ResultHTTPS = $TCPClientHTTPS.ConnectAsync($tryToConnect, 443).Wait(250)
-			$TCPClientHTTPS.Close()
-		}
-
-		$TCPClientSMBv2 = [System.Net.Sockets.TcpClient]::new()
-		$ResultSMBv2 = $TCPClientSMBv2.ConnectAsync($tryToConnect, 445).Wait(250)
-		$TCPClientSMBv2.Close()
-		if(!($ResultSMBv2)){
-			$TCPClientSMB = [System.Net.Sockets.TcpClient]::new()
-			$ResultSMB = $TCPClientSMB.ConnectAsync($tryToConnect, 139).Wait(250)
-			$TCPClientSMB.Close()
-		}
-
-		$TCPClientRDP = [System.Net.Sockets.TcpClient]::new()
-		$ResultRDP = $TCPClientRDP.ConnectAsync($tryToConnect, 3389).Wait(250)
-		$TCPClientRDP.Close()
-
-		if($ResultRDP -and $HostName -ne $tryToConnect) {
-			$btnRDP.IsEnabled = $true
-			$btnRDP.Visibility = 'Visible'
-		} else {
-			$btnRDP.IsEnabled = $false
-			$btnRDP.Visibility = 'Collapsed'
-		}
-
-		# Priority order: HTTP/HTTPS
-		if($ResultHTTP -and $HostName -ne $tryToConnect) {
-			$btnWebInterface.IsEnabled = $true
-			$btnWebInterface.Visibility = 'Visible'
-			$global:httpAvailable=1
-		} elseif($ResultHTTPS -and $HostName -ne $tryToConnect) {
-			$btnWebInterface.IsEnabled = $true
-			$btnWebInterface.Visibility = 'Visible'
-		} else {
-			$btnWebInterface.IsEnabled = $false
-			$btnWebInterface.Visibility = 'Collapsed'
-		}
-
-		# Priority order: SMBv2/SMB
-		if($ResultSMBv2 -and $HostName -ne $tryToConnect) {
-			$btnShare.IsEnabled = $true
-			$btnShare.Visibility = 'Visible'
-		} elseif($ResultSMB -and $HostName -ne $tryToConnect) {
-			$btnShare.IsEnabled = $true
-			$btnShare.Visibility = 'Visible'
-		} else {
-			$btnShare.IsEnabled = $false
-			$btnShare.Visibility = 'Collapsed'
-		}
-		if (-not $ResultRDP -and -not ($ResultHTTPS -or $ResultHTTP) -and -not ($ResultSMBv2 -or $ResultSMB)) {
-			$noConnectionsLabel.Visibility = 'Visible'
-		} else {
-			$noConnectionsLabel.Visibility = 'Collapsed'
-		}
+		return
 	}
+	$global:tryToConnect = $selectedhost -replace ' \(This Device\)'
+	$noConnectionsLabel.Text = 'No Connections Found'
+
+	# Check connectivity for different protocols
+	$ports = @{
+		HTTP = 80
+		HTTPS = 443
+		SMBv2 = 445
+		SMB = 139
+		RDP = 3389
+	}
+	$results = @{}
+	foreach ($protocol in $ports.Keys) {
+		$client = [System.Net.Sockets.TcpClient]::new()
+		$results[$protocol] = $client.ConnectAsync($tryToConnect, $ports[$protocol]).Wait(250)
+		$client.Close()
+	}
+
+	# Update button states based on connectivity results
+	$btnRDP.IsEnabled = $results.RDP -and $HostName -ne $tryToConnect
+	$btnRDP.Visibility = if ($btnRDP.IsEnabled) { 'Visible' } else { 'Collapsed' }
+
+	$btnWebInterface.IsEnabled = ($results.HTTP -or $results.HTTPS) -and $HostName -ne $tryToConnect
+	$btnWebInterface.Visibility = if ($btnWebInterface.IsEnabled) { 'Visible' } else { 'Collapsed' }
+	$global:httpAvailable = if ($results.HTTP) { 1 } else { 0 }
+
+	$btnShare.IsEnabled = ($results.SMBv2 -or $results.SMB) -and $HostName -ne $tryToConnect
+	$btnShare.Visibility = if ($btnShare.IsEnabled) { 'Visible' } else { 'Collapsed' }
+
+	# Show 'No Connections Found' if no services are available
+	$noConnectionsLabel.Visibility = if (-not $btnRDP.IsEnabled -and -not $btnWebInterface.IsEnabled -and -not $btnShare.IsEnabled) { 'Visible' } else { 'Collapsed' }
 }
 
-# This function is needed to make sure sorting by [version] is maintained when sorting by IP Address
-$priorSorting = $false
+# Listview column sort logic
+$sortDirections = @{}
 $listViewSortColumn = {
 	param([System.Object]$sender, [System.EventArgs]$Event)
 
 	$SortPropertyName = $Event.OriginalSource.Column.DisplayMemberBinding.Path.Path
 
-	# Check if sorting the IP Address column
-	if ($SortPropertyName -eq "IPaddress") {
-		# Use version sorting for IP addresses
-		$sortDescription = $Sender.Items.SortDescriptions | Where-Object { $_.PropertyName -eq $SortPropertyName }
-
-		Switch ($True)
-		{
-			{-not $sortDescription}
-			{
-				# If no sorting has occurred before, start with descending for IPaddress
-				$Direction = if($priorSorting) {[System.ComponentModel.ListSortDirection]::Ascending} else {[System.ComponentModel.ListSortDirection]::Descending}
-				$priorSorting = $true
-			}
-
-			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Descending}
-			{$Direction = [System.ComponentModel.ListSortDirection]::Ascending}
-
-			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Ascending}
-			{$Direction = [System.ComponentModel.ListSortDirection]::Descending}
-
-			{$sortDescription}
-			{$Sender.Items.SortDescriptions.Remove($sortDescription)}
-
-			{$Direction -is [System.ComponentModel.ListSortDirection]}
-			{
-				$Sender.Items.SortDescriptions.Insert(0,
-					[System.ComponentModel.SortDescription]::new($SortPropertyName, $Direction)
-				)
-
-				# Sort the items before re-adding them to the ListView
-				$sortedItems = $Sender.Items | Sort-Object -Property @{Expression={[version]$_.IPaddress}; Ascending=($Direction -eq [System.ComponentModel.ListSortDirection]::Ascending)}
-				$Sender.Items.Clear()
-				$sortedItems | ForEach-Object { $Sender.Items.Add($_) }
-			}
+	# Determine current direction, toggle if column has been sorted before
+	switch ($true) {
+		{$sortDirections.ContainsKey($SortPropertyName)} {
+			$sortDirections[$SortPropertyName] = -not $sortDirections[$SortPropertyName]
 		}
-	} else {
-		# Default sorting for other columns
-		$sortDescription = $Sender.Items.SortDescriptions | Where-Object { $_.PropertyName -eq $SortPropertyName }
-
-		Switch ($True)
-		{
-			{-not $sortDescription}
-			{
-				$Direction = [System.ComponentModel.ListSortDirection]::Ascending
-				$priorSorting = $true
-			}
-
-			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Descending}
-			{$Direction = [System.ComponentModel.ListSortDirection]::Ascending}
-
-			{$sortDescription.Direction -eq [System.ComponentModel.ListSortDirection]::Ascending}
-			{$Direction = [System.ComponentModel.ListSortDirection]::Descending}
-
-			{$sortDescription}
-			{$Sender.Items.SortDescriptions.Remove($sortDescription)}
-
-			{$Direction -is [System.ComponentModel.ListSortDirection]}
-			{
-				$newSortDescription = [System.ComponentModel.SortDescription]::new($SortPropertyName,$Direction)
-				$Sender.Items.SortDescriptions.Insert(0,$newSortDescription)
-			}
+		default {
+			$sortDirections[$SortPropertyName] = $false	 # false for descending, true for ascending
 		}
 	}
+
+	$direction = if ($sortDirections[$SortPropertyName]) { "Ascending" } else { "Descending" }
+
+	# Sort items
+	switch ($SortPropertyName) {
+		"IPaddress" {
+			$sortedItems = $Sender.Items | Sort-Object -Property @{Expression={[version]$_.IPaddress}; $direction=$true}
+		}
+		default {
+			$sortedItems = $Sender.Items | Sort-Object -Property $SortPropertyName -Descending:($direction -eq "Descending")
+		}
+	}
+
+	# Update ListView
+	$Sender.Items.Clear()
+	$sortedItems | ForEach-Object { $Sender.Items.Add($_) }
 }
 
 # get icons from DLL or EXE files via shell32.dll function calls
@@ -591,25 +523,29 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 		</ControlTemplate>
 		<Style x:Key="ListViewStyle" TargetType="{x:Type ListViewItem}" >
 			<Setter Property="Background" Value="#111111"/>
-			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
 			<Setter Property="FontWeight" Value="Normal"/>
 			<Setter Property="BorderThickness" Value="1"/>
 			<Style.Triggers>
+				<Trigger Property="ItemsControl.AlternationIndex" Value="0">
+					<Setter Property="Background" Value="#111111"/>
+					<Setter Property="Foreground" Value="#EEEEEE"/>
+				</Trigger>
 				<Trigger Property="ItemsControl.AlternationIndex" Value="1">
 					<Setter Property="Background" Value="#000000"/>
 					<Setter Property="Foreground" Value="#EEEEEE"/>
 				</Trigger>
 				<Trigger Property="IsMouseOver" Value="True">
 					<Setter Property="Background" Value="Transparent" />
-					<Setter Property="BorderBrush" Value="#333333" />
+					<Setter Property="BorderBrush" Value="#FF00BFFF" />
 				</Trigger>
 				<MultiTrigger>
 					<MultiTrigger.Conditions>
 						<Condition Property="IsSelected" Value="true" />
 						<Condition Property="Selector.IsSelectionActive" Value="true" />
 					</MultiTrigger.Conditions>
-					<Setter Property="Background" Value="{x:Static SystemColors.ControlDarkDarkBrush}" />
-					<Setter Property="Foreground" Value="#000000" />
+					<Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+					<Setter Property="Foreground" Value="#FFFFFF" />
 					<Setter Property="FontWeight" Value="Bold"/>
 				</MultiTrigger>
 			</Style.Triggers>
@@ -796,46 +732,44 @@ $Main.Add_Closing({
 	})
 })
 
-# Extract and set icons for buttons
+# Define icons
 $icons = @(
-	@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ButtonName = "btnRDP"},
-	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ButtonName = "btnWebInterface"},
-	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ButtonName = "btnShare"}
+	@{File = 'C:\Windows\System32\shell32.dll'; Index = 18; ElementName = "WindowIcon"; Type = "Window"},
+	@{File = 'C:\Windows\System32\imageres.dll'; Index = 73; ElementName = "scanAdminIcon"; Type = "Image"},
+	@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ElementName = "btnRDP"; Type = "Button"},
+	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
+	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"}
 )
 
+# Extract and set icons
 foreach ($icon in $icons) {
 	$extractedIcon = [System.IconExtractor]::Extract($icon.File, $icon.Index, $true)
-
 	if ($extractedIcon) {
 		$bitmapSource = [System.IconExtractor]::IconToBitmapSource($extractedIcon)
-		$image = New-Object System.Windows.Controls.Image -Property @{
-			Source = $bitmapSource;
-			Width = 24;
-			Height = 24
+		$element = $Main.FindName($icon.ElementName)
+
+		switch ($icon.Type) {
+			"Window" {
+				$Main.Icon = $bitmapSource
+				$Main.TaskbarItemInfo.Overlay = $bitmapSource
+				$Main.TaskbarItemInfo.Description = $AppId
+			}
+			"Image" {
+				$element.Source = $bitmapSource
+				$element.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+			}
+			"Button" {
+				$image = New-Object System.Windows.Controls.Image -Property @{
+					Source = $bitmapSource;
+					Width = 24;
+					Height = 24
+				}
+				$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+				$element.Content = $image
+			}
 		}
-
-		$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
-
-		$button = $Main.FindName($icon.ButtonName)
-		$button.Content = $image
 	}
 }
-
-# This icon is shown on the Scan button if either the Left or Right CTRL key is held
-$adminIcon = [System.IconExtractor]::Extract('C:\Windows\System32\imageres.dll', 73, $true)
-$scanAdminIcon.Source = [System.IconExtractor]::IconToBitmapSource($adminIcon)
-$scanAdminIcon.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
-
-
-# Extract and set icon for window and taskbar
-$mainIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', 18, $true)
-$mainIconBitmap = [System.IconExtractor]::IconToBitmapSource($mainIcon)
-
-# Set Window Icon
-$Main.Icon = $mainIconBitmap
-# Set Taskbar Icon
-$Main.TaskbarItemInfo.Overlay = $mainIconBitmap
-$Main.TaskbarItemInfo.Description = $AppId
 
 $btnRDP.Add_Click({
 	$btnRDP.BorderThickness = "0"
@@ -854,6 +788,7 @@ $btnRDP.Add_MouseLeave({
 $btnWebInterface.Add_Click({
 	$btnWebInterface.BorderThickness = "0"
 	$PopupCanvas.Visibility = 'Hidden'
+
 	# Priority order: HTTP/HTTPS
 	if($script:httpAvailable -eq 1){
 		Start-Process "`"http://$tryToConnect`""
@@ -916,7 +851,7 @@ $listView.Add_MouseLeftButtonDown({
 	$listView.SelectedItems.Clear()
 })
 
-# Variable to track if Ctrl is down
+# Clear CTRL key value
 $global:CtrlIsDown = $false
 
 # KeyDown event handler
@@ -998,3 +933,4 @@ $Scan.Add_Click({
 
 # Show Window
 $Main.ShowDialog() | out-null
+cmd /pause
