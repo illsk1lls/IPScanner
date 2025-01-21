@@ -674,7 +674,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 								</Button.Effect>
 								<Button.Resources>
 									<Storyboard x:Key="mouseEnterAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
 										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
 										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
 									</Storyboard>
@@ -694,7 +694,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 								</Button.Effect>
 								<Button.Resources>
 									<Storyboard x:Key="mouseEnterAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
 										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
 										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
 									</Storyboard>
@@ -714,7 +714,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 								</Button.Effect>
 								<Button.Resources>
 									<Storyboard x:Key="mouseEnterAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
 										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
 										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
 									</Storyboard>
