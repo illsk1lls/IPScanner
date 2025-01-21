@@ -373,7 +373,7 @@ function CheckConnectivity {
 	param (
 		[string]$selectedhost
 	)
-	if ($selectedhost -match ' \(This Device\)') {
+	if ($selectedhost -match ' (This Device)') {
 		# Disable all buttons for 'This Device'
 		@('btnRDP', 'btnWebInterface', 'btnShare') | ForEach-Object {
 			Get-Variable $_ -ValueOnly | ForEach-Object {
@@ -385,7 +385,7 @@ function CheckConnectivity {
 		$noConnectionsLabel.Visibility = 'Visible'
 		return
 	}
-	$global:tryToConnect = $selectedhost -replace ' \(This Device\)'
+	$global:tryToConnect = $selectedhost -replace ' (This Device)', ''
 	$noConnectionsLabel.Text = 'No Connections Found'
 
 	# Check connectivity for different protocols
@@ -646,6 +646,15 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 					<GridViewColumn Header="Host Name" DisplayMemberBinding="{Binding HostName}" Width="314" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
 				</GridView>
 			</ListView.View>
+			<ListView.ContextMenu>
+				<ContextMenu>
+					<MenuItem Header="Export">
+						<MenuItem Header="HTML" Name="ExportToHTML"/>
+						<MenuItem Header="CSV" Name="ExportToCSV"/>
+						<MenuItem Header="Text" Name="ExportToText"/>
+					</MenuItem>
+				</ContextMenu>
+			</ListView.ContextMenu>
 		</ListView>
 		<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
 			<Border Width="350" Height="240" BorderThickness="0.70" BorderBrush="#FF00BFFF">
@@ -819,6 +828,135 @@ $btnShare.Add_MouseEnter({
 
 $btnShare.Add_MouseLeave({
 	$btnShare.BorderThickness = "0"
+})
+
+
+# Export List in HTML format
+$ExportToHTML.Add_Click({
+	$saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+	$saveFileDialog.Filter = "HTML files (*.html)|*.html|All files (*.*)|*.*"
+	$saveFileDialog.FileName = "Network_Scan_Results"
+	if ($saveFileDialog.ShowDialog() -eq "OK") {
+		$path = $saveFileDialog.FileName
+		try {
+			# Create HTML content with header
+			$htmlContent = @"
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Network Scan Results</title>
+	<style>
+		table, th, td { border: 1px solid black; border-collapse: collapse; padding: 5px; }
+		th { background-color: #f2f2f2; }
+		h1, p { margin: 0; padding: 0; }
+		p { margin-bottom: 2px; }
+		.info-block { margin-bottom: 20px; }
+	</style>
+</head>
+<body>
+	<h1>Network Scan Results</h1><br>
+	<div class="info-block">
+		<p><strong>External IP:</strong> $global:externalIP</p>
+		<p><strong>Domain:</strong> $global:domain</p>
+		<p><strong>Date/Time:</strong> $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</p>
+	</div>
+	<table>
+		<tr>
+			<th>MAC Address</th>
+			<th>Vendor</th>
+			<th>IP Address</th>
+			<th>Host Name</th>
+		</tr>
+"@
+			$listView.Items | ForEach-Object {
+				$htmlContent += @"
+		<tr>
+			<td>$($_.MACaddress)</td>
+			<td>$($_.Vendor)</td>
+			<td>$($_.IPaddress)</td>
+			<td>$($_.HostName.Replace(' (This Device)',''))</td>
+		</tr>
+"@
+			}
+			$htmlContent += @"
+	</table>
+</body>
+</html>
+"@
+
+			# Write HTML to file
+			[System.IO.File]::WriteAllText($path, $htmlContent)
+			$shell = New-Object -ComObject Wscript.Shell
+			$shell.Popup("Export to HTML completed successfully!",0,'Export:',0x0) | Out-Null
+		}
+		catch {
+			$shell = New-Object -ComObject Wscript.Shell
+			$shell.Popup("Error during export: $_",0,'Error:',0x0) | Out-Null
+		}
+	}
+})
+
+# Export List in CSV format
+$ExportToCSV.Add_Click({
+	$saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+	$saveFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+	$saveFileDialog.FileName = "Network_Scan_Results"
+	if ($saveFileDialog.ShowDialog() -eq "OK") {
+		$path = $saveFileDialog.FileName
+		try {
+			# CSV header
+			$csvHeader = "External IP,Domain,Date/Time`r`n"
+			$csvHeader += "$global:externalIP,$global:domain,$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
+			$csvContent = $listView.Items | ForEach-Object {
+				"`r`n$($_.MACaddress),$($_.Vendor),$($_.IPaddress),$($_.HostName.Replace(' (This Device)',''))"
+			}
+			[System.IO.File]::WriteAllLines($path, ($csvHeader + $csvContent))
+			$shell = New-Object -ComObject Wscript.Shell
+			$shell.Popup("Export to CSV completed successfully!",0,'Export:',0x0) | Out-Null
+		}
+		catch {
+			$shell = New-Object -ComObject Wscript.Shell
+			$shell.Popup("Error during export: $_",0,'Error:',0x0) | Out-Null
+		}
+	}
+})
+
+# Export List in TXT format
+$ExportToText.Add_Click({
+	$saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+	$saveFileDialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*"
+	$saveFileDialog.FileName = "Network_Scan_Results"
+	if ($saveFileDialog.ShowDialog() -eq "OK") {
+		$path = $saveFileDialog.FileName
+		try {
+			$textContent = @"
+NETWORK SCAN RESULTS
+
+EXTERNAL IP: $global:externalIP
+DOMAIN	   : $global:domain
+DATE/TIME  : $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+
+--------------------------------------
+"@
+			$textContent += $listView.Items | ForEach-Object {
+@"
+
+MAC		: $($_.MACaddress)
+Vendor	: $($_.Vendor)
+IP		: $($_.IPaddress)
+Hostname: $($_.HostName.Replace(' (This Device)',''))
+--------------------------------------
+"@
+			}
+			[System.IO.File]::WriteAllText($path, $textContent)	 # Changed to WriteAllText for one large string
+			$shell = New-Object -ComObject Wscript.Shell
+			$shell.Popup("Export to Text completed successfully!",0,'Export:',0x0) | Out-Null
+		}
+		catch {
+			$shell = New-Object -ComObject Wscript.Shell
+			$shell.Popup("Error during export: $_",0,'Error:',0x0) | Out-Null
+		}
+	}
 })
 
 # Add listView column header click capture
