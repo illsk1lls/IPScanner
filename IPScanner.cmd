@@ -404,7 +404,6 @@ function CheckConnectivity {
 	}
 
 	# Update button states based on connectivity results
-
 	$btnShare.IsEnabled = ($results.SMBv2 -or $results.SMB) -and $HostName -ne $tryToConnect
 	$btnShare.Visibility = if ($btnShare.IsEnabled) { 'Visible' } else { 'Collapsed' }
 
@@ -416,7 +415,6 @@ function CheckConnectivity {
 	if ($btnShare.Visibility -eq 'Visible' -or $btnWebInterface.Visibility -eq 'Visible') {$btnRDP.Margin = "0,0,25,0"} else {$btnRDP.Margin = "0,0,0,0"}
 	$btnRDP.IsEnabled = $results.RDP -and $HostName -ne $tryToConnect
 	$btnRDP.Visibility = if ($btnRDP.IsEnabled) { 'Visible' } else { 'Collapsed' }
-
 
 	# Show 'No Connections Found' if no services are available
 	$noConnectionsLabel.Visibility = if (-not $btnRDP.IsEnabled -and -not $btnWebInterface.IsEnabled -and -not $btnShare.IsEnabled) { 'Visible' } else { 'Collapsed' }
@@ -434,7 +432,8 @@ $listViewSortColumn = {
 			$sortDirections[$SortPropertyName] = -not $sortDirections[$SortPropertyName]
 		}
 		default {
-			$sortDirections[$SortPropertyName] = $false	 # false for descending, true for ascending
+			# false for descending, true for ascending
+			$sortDirections[$SortPropertyName] = $false
 		}
 	}
 	$direction = if ($sortDirections[$SortPropertyName]) { "Ascending" } else { "Descending" }
@@ -1002,7 +1001,7 @@ Hostname: $($_.HostName.Replace(' (This Device)',''))
 --------------------------------------
 "@
 			}
-			[System.IO.File]::WriteAllText($path, $textContent)	 # Changed to WriteAllText for one large string
+			[System.IO.File]::WriteAllText($path, $textContent)
 			$shell = New-Object -ComObject Wscript.Shell
 			$shell.Popup("Export to Text completed successfully!",0,'Export:',0x0) | Out-Null
 		}
