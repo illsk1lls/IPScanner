@@ -669,9 +669,66 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, Present
 						<TextBlock Name="pMAC" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
 						<TextBlock Name="pVendor" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
 						<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,35,0,0">
-							<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-							<Button Name="btnWebInterface" Width="40" Height="32" ToolTip="Connect via Web Interface" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-							<Button Name="btnShare" Width="40" Height="32" ToolTip="Connect via Share" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
+								<Button.Effect>
+									<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+								</Button.Effect>
+								<Button.Resources>
+									<Storyboard x:Key="mouseEnterAnimation">
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+									</Storyboard>
+									<Storyboard x:Key="mouseLeaveAnimation">
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+									</Storyboard>
+								</Button.Resources>
+								<Button.RenderTransform>
+									<TranslateTransform/>
+								</Button.RenderTransform>
+							</Button>
+							<Button Name="btnWebInterface" Width="40" Height="32" ToolTip="Connect via Web Interface" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
+								<Button.Effect>
+									<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+								</Button.Effect>
+								<Button.Resources>
+									<Storyboard x:Key="mouseEnterAnimation">
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+									</Storyboard>
+									<Storyboard x:Key="mouseLeaveAnimation">
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+									</Storyboard>
+								</Button.Resources>
+								<Button.RenderTransform>
+									<TranslateTransform/>
+								</Button.RenderTransform>
+							</Button>
+							<Button Name="btnShare" Width="40" Height="32" ToolTip="Connect via Share" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+								<Button.Effect>
+									<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+								</Button.Effect>
+								<Button.Resources>
+									<Storyboard x:Key="mouseEnterAnimation">
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+									</Storyboard>
+									<Storyboard x:Key="mouseLeaveAnimation">
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+									</Storyboard>
+								</Button.Resources>
+								<Button.RenderTransform>
+									<TranslateTransform/>
+								</Button.RenderTransform>
+							</Button>
 							<TextBlock Name="noConnectionsLabel" Text="No Connections Found" Foreground="#EEEEEE" FontSize="12" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,8,0,0"/>
 						</StackPanel>
 					</StackPanel>
@@ -783,17 +840,16 @@ foreach ($icon in $icons) {
 }
 
 $btnRDP.Add_Click({
-	$btnRDP.BorderThickness = "0"
 	$PopupCanvas.Visibility = 'Hidden'
 	&mstsc /v:$tryToConnect
 })
 
 $btnRDP.Add_MouseEnter({
-	$btnRDP.BorderThickness = ".75"
+	$btnRDP.FindResource("mouseEnterAnimation").Begin($btnRDP)
 })
 
 $btnRDP.Add_MouseLeave({
-	$btnRDP.BorderThickness = "0"
+	$btnRDP.FindResource("mouseLeaveAnimation").Begin($btnRDP)
 })
 
 $btnWebInterface.Add_Click({
@@ -809,27 +865,25 @@ $btnWebInterface.Add_Click({
 })
 
 $btnWebInterface.Add_MouseEnter({
-	$btnWebInterface.BorderThickness = ".75"
+	$btnWebInterface.FindResource("mouseEnterAnimation").Begin($btnWebInterface)
 })
 
 $btnWebInterface.Add_MouseLeave({
-	$btnWebInterface.BorderThickness = "0"
+	$btnWebInterface.FindResource("mouseLeaveAnimation").Begin($btnWebInterface)
 })
 
 $btnShare.Add_Click({
-	$btnShare.BorderThickness = "0"
 	$PopupCanvas.Visibility = 'Hidden'
 	&explorer "`"\\$tryToConnect`""
 })
 
 $btnShare.Add_MouseEnter({
-	$btnShare.BorderThickness = ".75"
+	$btnShare.FindResource("mouseEnterAnimation").Begin($btnShare)
 })
 
 $btnShare.Add_MouseLeave({
-	$btnShare.BorderThickness = "0"
+	$btnShare.FindResource("mouseLeaveAnimation").Begin($btnShare)
 })
-
 
 # Export List in HTML format
 $ExportToHTML.Add_Click({
@@ -1073,4 +1127,3 @@ $Scan.Add_Click({
 
 # Show Window
 $Main.ShowDialog() | out-null
-cmd /pause
