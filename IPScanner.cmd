@@ -494,7 +494,7 @@ namespace System
 "@
 
 # Define WPF GUI Structure
-Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Drawing, PresentationCore, PresentationFramework, WindowsBase
+Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, System.Drawing, PresentationCore, PresentationFramework, WindowsBase
 [xml]$XAML = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
