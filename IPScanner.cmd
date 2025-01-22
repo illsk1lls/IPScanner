@@ -1018,7 +1018,7 @@ $ExportToText.Add_Click({
 NETWORK SCAN RESULTS
 
 EXTERNAL IP: $global:externalIP
-DOMAIN	   : $global:domain
+DOMAIN     : $global:domain
 DATE/TIME  : $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 
 --------------------------------------
@@ -1026,9 +1026,9 @@ DATE/TIME  : $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 			$textContent += $listView.Items | ForEach-Object {
 @"
 
-MAC		: $($_.MACaddress)
-Vendor	: $($_.Vendor)
-IP		: $($_.IPaddress)
+MAC     : $($_.MACaddress)
+Vendor  : $($_.Vendor)
+IP      : $($_.IPaddress)
 Hostname: $($_.HostName.Replace(' (This Device)',''))
 --------------------------------------
 "@
