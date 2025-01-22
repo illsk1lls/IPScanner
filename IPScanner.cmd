@@ -118,7 +118,7 @@ function Scan-Subnet {
 	1..254 | ForEach-Object {
 		Test-Connection -ComputerName "$gatewayPrefix$_" -Count 1 -AsJob | Out-Null
 		Update-Progress ($_ * (100 / 254)) 'Sending Packets'
-		Start-Sleep -Milliseconds 15
+		Start-Sleep -Milliseconds 5
 	}
 	Update-Progress 100 'Sending Packets'
 }
@@ -129,9 +129,72 @@ function waitForResponses {
 
 	1..100 | ForEach-Object {
 		Update-Progress $_ 'Listening'
-		Start-Sleep -Milliseconds 165
+		Start-Sleep -Milliseconds 140
 	}
 	Update-Progress 100 'Listening'
+}
+
+# Create peer list
+function List-Machines {
+	Update-Progress 0 'Identifying Devices'
+
+	if($arpInit){
+		$arpInit.Clear()
+		$arpConverted.Clear()
+		$arpOutput.Clear()
+	}
+	# Filter for Reachable or Stale states and select only IP and MAC address
+	$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
+
+	# Convert IP Addresses from string to int by each section
+	$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
+
+	# Sort by IP using [version] sorting
+	$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
+	$self = 0
+	$myLastOctet = [int]($internalIP -split '\.')[-1]
+
+	# Get My Vendor via Mac lookup
+	$ProgressPreference = 'SilentlyContinue'
+	$tryMyVendor = (irm "https://www.macvendorlookup.com/api/v2/$($myMac.Replace(':','').Substring(0,6))" -Method Get).Company
+	$ProgressPreference = 'Continue'
+	$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unable to Identify'}
+
+	# Cycle through ARP table to populate initial ListView data and start async lookups
+	$totalItems = ($arpOutput.Count - 1)
+
+	$asyncTasks = @{}
+	$vendorTasks = @{}
+
+	foreach ($line in $arpOutput) {
+		$ip = $line.IPAddress
+		$mac = $line.LinkLayerAddress.Replace('-',':')
+		$name = if ($ip -eq $internalIP) {"$hostName (This Device)"} else {"Resolving..."}
+		$vendor = if ($ip -eq $internalIP) {$myVendor} else {"Identifying..."}
+
+		# Format and display
+		$lastOctet = [int]($ip -split '\.')[-1]
+		if ($myLastOctet -gt $lastOctet) {
+				# Add item with initial placeholder for hostname and vendor
+				$item = [pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}
+				$listView.Items.Add($item)
+		} else {
+			if ($self -ge 1) {
+				$item = [pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}
+				$listView.Items.Add($item)
+			} else {
+				$listView.Items.Add([pscustomobject]@{'MACaddress'="$myMac";'Vendor'="$myVendor";'IPaddress'="$internalIP";'HostName'="$hostName (This Device)"})
+				$item = [pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}
+				$listView.Items.Add($item)
+				$self++
+			}
+		}
+	}
+	$listView.Items.Refresh()
+	if ($totalItems -ge 19) {
+		$hostNameColumn.Width = 300
+	}
+	Update-uiMain
 }
 
 # Initialize RunspacePool
@@ -139,10 +202,10 @@ $SessionState = [System.Management.Automation.Runspaces.InitialSessionState]::Cr
 $RunspacePool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $SessionState, $Host)
 $RunspacePool.Open()
 
-# List peers
-function scanProcess {
-	$backgroundThread = [powershell]::Create().AddScript({
-		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac, $hostNameColumn)
+# Background Vendor lookup
+function processVendors {
+	$vendorLookupThread = [powershell]::Create().AddScript({
+		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac)
 
 		function Update-uiBackground{
 			param($action)
@@ -161,147 +224,53 @@ function scanProcess {
 			}
 		}
 
-		function List-Machines {
-			Update-uiBackground{
-				$Progress.Value = "0"
-				$BarText.Text = 'Identifying Devices'
-			}
+		$vendorTasks = @{}
 
-			if($arpInit){
-				$arpInit.Clear()
-				$arpConverted.Clear()
-				$arpOutput.Clear()
-			}
-			# Filter for Reachable or Stale states and select only IP and MAC address
-			$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
-
-			# Convert IP Addresses from string to int by each section
-			$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
-
-			# Sort by IP using [version] sorting
-			$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
-			$self = 0
-			$myLastOctet = [int]($internalIP -split '\.')[-1]
-
-			# Get My Vendor via Mac lookup
-			$tryMyVendor = (Get-MacVendor "$myMac").Company
-			$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unable to Identify'}
-
-			# Cycle through ARP table to populate initial ListView data and start async lookups
-			$i = 0
-			$totalItems = $arpOutput.Count - 1
-
-			$asyncTasks = @{}
-			$vendorTasks = @{}
-
-			foreach ($line in $arpOutput) {
-				$ip = $line.IPAddress
-				$mac = $line.LinkLayerAddress.Replace('-',':')
-				$name = if ($ip -eq $internalIP) {"$hostName (This Device)"} else {"Resolving..."}
-				$vendor = if ($ip -eq $internalIP) {$myVendor} else {"Identifying..."}
-
-				# Format and display
-				$lastOctet = [int]($ip -split '\.')[-1]
-				if ($myLastOctet -gt $lastOctet) {
-					Update-uiBackground{
-						# Add item with initial placeholder for hostname and vendor
-						$item = [pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}
-						$listView.Items.Add($item)
-						$Progress.Value = ($i * (100 / $totalItems))
-					}
-				} else {
-					if ($self -ge 1) {
-						Update-uiBackground{
-							$item = [pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}
-							$listView.Items.Add($item)
-							$Progress.Value = ($i * (100 / $totalItems))
-						}
+		# Process found devices
+		foreach ($item in $listView.Items) {
+			$ip = $item.IPaddress
+			$mac = $item.MACaddress
+			if ($ip -ne $internalIP) {
+				$vendorTask = Start-Job -ScriptBlock {
+					param($mac)
+					$ProgressPreference = 'SilentlyContinue'
+					$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
+					$ProgressPreference = 'SilentlyContinue'
+					if([string]::IsNullOrEmpty($response.Company)){
+						return $null
 					} else {
-						Update-uiBackground{
-							$listView.Items.Add([pscustomobject]@{'MACaddress'="$myMac";'Vendor'="$myVendor";'IPaddress'="$internalIP";'HostName'="$hostName (This Device)"})
-							$item = [pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}
-							$listView.Items.Add($item)
-							$Progress.Value = ($i * (100 / $totalItems))
-						}
-						$self++
+						return $response
 					}
-				}
-
-				# Start asynchronous lookups for hostname and vendor immediately after adding item
-				if ($ip -ne $internalIP) {
-					$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
-					$vendorTask = Start-Job -ScriptBlock {
-						param($mac)
-						$ProgressPreference = 'SilentlyContinue'
-						$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
-						$ProgressPreference = 'SilentlyContinue'
-						if([string]::IsNullOrEmpty($response.Company)){
-							return $null
-						} else {
-							$response
-						}
-					} -ArgumentList $mac
-					$asyncTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
-					$vendorTasks[$ip] = $vendorTask
-
-					do {
-						# Process vendor tasks
-						foreach ($ipCheck in @($vendorTasks.Keys)) {
-							$vendorTask = $vendorTasks[$ipCheck]
-							if ($vendorTask.State -eq "Completed") {
-								$result = Receive-Job -Job $vendorTask
-								$vendorResult = if ($result -and $result.Company) {
-									$result.Company.substring(0, [System.Math]::Min(35, $result.Company.Length))
-								} else {
-									'Unable to Identify'
-								}
-								Update-uiBackground{
-									foreach ($item in $listView.Items) {
-										if ($item.IPaddress -eq $ipCheck) {
-											$item.Vendor = $vendorResult
-											$listView.Items.Refresh()
-										}
+				} -ArgumentList $mac
+				$vendorTasks[$ip] = $vendorTask
+				do {
+					# Process vendor tasks
+					foreach ($ipCheck in @($vendorTasks.Keys)) {
+						if ($vendorTasks[$ipCheck].State -eq "Completed") {
+							$result = Receive-Job -Job $vendorTasks[$ipCheck]
+							$vendorResult = if ($result -and $result.Company) {
+								$result.Company.substring(0, [System.Math]::Min(35, $result.Company.Length))
+							} else {
+								'Unable to Identify'
+							}
+							Update-uiBackground{
+								foreach ($it in $listView.Items) {
+									if ($it.IPaddress -eq $ipCheck) {
+										$it.Vendor = $vendorResult
+										$listView.Items.Refresh()
 									}
 								}
-								$vendorTasks.Remove($ipCheck)
-							}
-						}
 
-						# Process hostname tasks
-						foreach ($ipCheck in @($asyncTasks.Keys)) {
-							$taskObj = $asyncTasks[$ipCheck]
-							if ($taskObj.Task.IsCompleted) {
-								$entry = $taskObj.Task.Result
-								Update-uiBackground{
-									foreach ($item in $listView.Items) {
-										if ($item.IPaddress -eq $ipCheck) {
-											if ([string]::IsNullOrEmpty($entry.HostName)) {
-												$item.HostName = "Unable to Resolve"
-											} else {
-												$item.HostName = $entry.HostName
-											}
-											$listView.Items.Refresh()
-										}
-									}
-								}
-								$asyncTasks.Remove($ipCheck)
 							}
+							$vendorTasks.Remove($ipCheck)
 						}
-						Start-Sleep -Milliseconds 50
-					} while ($asyncTasks.Count -ge 8 -or $vendorTasks.Count -ge 8)
-				}
-				$i++
-				if ($i -eq 19) {
-					Update-uiBackground{
-						$hostNameColumn.Width = 300
 					}
-				}
+					Start-Sleep -Milliseconds 50
+				} while ($vendorTasks.Count -ge 5)
 			}
 		}
 
-		List-Machines
-
-		# Temp bugfix for unidentified runaway, last listitem background job(s) always closes before returning a value(s)
+		# Temp bugfix for unidentified runaway, last listitem background job always closes before returning a value
 		$lastItem = $listView.Items | Select-Object -Last 1
 		$lastIP = $lastItem.IPaddress
 		$lastMAC = $lastItem.MACaddress
@@ -316,19 +285,6 @@ function scanProcess {
 			}
 			Update-uiBackground{
 				$lastItem.Vendor = $lastVendorResult
-			}
-		}
-		# Check HostName
-		if ($lastItem.HostName -eq "Resolving...") {
-			# Manual hostname lookup for the last IP only if needed
-			try {
-				$dnsEntry = [System.Net.Dns]::GetHostEntryAsync($lastIP).Result
-				$lastHostName = if ($dnsEntry.HostName) { $dnsEntry.HostName } else { "Unable to Resolve" }
-			} catch {
-				$lastHostName = "Unable to Resolve"
-			}
-			Update-uiBackground{
-				$lastItem.HostName = $lastHostName
 			}
 		}
 
@@ -351,24 +307,100 @@ function scanProcess {
 		}
 
 		# Clean up jobs
-		Remove-Job -Job $asyncTasks.Values -Force
 		Remove-Job -Job $vendorTasks.Values -Force
 
-		# Final update after all jobs are completed
-		Update-uiBackground{
-			# Hide ProgressBar, show Button after scan completes
-			$Progress.Visibility = 'Collapsed'
-			$Scan.Visibility = 'Visible'
-			$BarText.Text = ''
-			$Scan.IsEnabled = $true
-			$Progress.Value = 0
-		}
-	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac).AddArgument($hostNameColumn)
-	$backgroundThread.RunspacePool = $RunspacePool
-	$startScan = $backgroundThread.BeginInvoke()
+	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac)
+	$vendorLookupThread.RunspacePool = $RunspacePool
+	$vendorScan = $vendorLookupThread.BeginInvoke()
 }
 
-# test connection availability
+# Process Hostnames
+function processHostnames {
+	$hostnameLookupThread = [powershell]::Create().AddScript({
+		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac)
+
+		function Update-uiBackground{
+			param($action)
+			$Main.Dispatcher.Invoke([action]$action, [Windows.Threading.DispatcherPriority]::Background)
+		}
+
+		$totalhostnamejobs = $listView.Items.Count
+		$asyncTasks = @{}
+
+		# Process found devices
+		foreach ($item in $listView.Items) {
+			$ip = $item.IPaddress
+			$mac = $item.MACaddress
+			if ($ip -ne $internalIP) {
+				$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
+				$asyncTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
+				do {
+					# Process hostname tasks
+					foreach ($ipCheck in @($asyncTasks.Keys)) {
+						if ($asyncTasks[$ipCheck].Task.IsCompleted) {
+							$entry = $asyncTasks[$ipCheck].Task.Result
+							Update-uiBackground{
+								foreach ($it in $listView.Items) {
+									if ($it.IPaddress -eq $ipCheck) {
+										$it.HostName = if ([string]::IsNullOrEmpty($entry.HostName)) {
+											"Unable to Resolve"
+										} else {
+											$entry.HostName
+										}
+										$listView.Items.Refresh()
+									}
+								}
+							}
+							$asyncTasks.Remove($ipCheck)
+						}
+					}
+					Start-Sleep -Milliseconds 50
+				} while ($asyncTasks.Count -ge 5)
+			}
+		}
+
+		# Temp bugfix for unidentified runaway, last listitem background job always closes before returning a value
+		$lastItem = $listView.Items | Select-Object -Last 1
+		$lastIP = $lastItem.IPaddress
+		$lastMAC = $lastItem.MACaddress
+		# Check HostName
+		if ($lastItem.HostName -eq "Resolving...") {
+			# Manual hostname lookup for the last IP only if needed
+			try {
+				$dnsEntry = [System.Net.Dns]::GetHostEntryAsync($lastIP).Result
+				$lastHostName = if ($dnsEntry.HostName) { $dnsEntry.HostName } else { "Unable to Resolve" }
+			} catch {
+				$lastHostName = "Unable to Resolve"
+			}
+			Update-uiBackground{
+				$lastItem.HostName = $lastHostName
+			}
+		}
+
+		# Refresh the ListView if any updates were made
+		Update-uiBackground{
+			$listView.Items.Refresh()
+		}
+
+		# Update any leftover orphans
+		Update-uiBackground{
+			foreach ($item in $listView.Items) {
+				if ($item.HostName -eq "Resolving...") {
+					$item.HostName = "Unable to Resolve"
+				}
+			}
+			$listView.Items.Refresh()
+		}
+
+		# Clean up jobs
+		Remove-Job -Job $asyncTasks.Values -Force
+
+	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac)
+	$hostnameLookupThread.RunspacePool = $RunspacePool
+	$hostnameScan = $hostnameLookupThread.BeginInvoke()
+}
+
+# Portscan
 function CheckConnectivity {
 	param (
 		[string]$selectedhost
@@ -1069,6 +1101,23 @@ $Main.Add_KeyUp({
 	}
 })
 
+# Wait for background jobs to finish
+function WaitForCompletion {
+	do {
+		$hasUnresolved = $false
+		foreach ($item in $listView.Items) {
+			if ($item.HostName -eq "Resolving..." -or $item.Vendor -eq "Identifying...") {
+				$hasUnresolved = $true
+				break
+			}
+		}
+		if ($hasUnresolved) {
+			Start-Sleep -Milliseconds 500  # Wait a bit before checking again
+			Update-uiMain
+		}
+	} while ($hasUnresolved)
+}
+
 # Ensure clean ListView
 if($listview.Items){
 	$listview.Items.Clear()
@@ -1118,7 +1167,18 @@ $Scan.Add_Click({
 		Update-uiMain
 		Scan-Subnet
 		waitForResponses
-		scanProcess
+		List-Machines
+		processVendors
+		processHostnames
+		$vendorLookupThread.EndInvoke($vendorScan)
+		$hostnameLookupThread.EndInvoke($hostnameScan)
+		WaitForCompletion
+		# Hide ProgressBar, show button
+		$Progress.Visibility = 'Collapsed'
+		$Scan.Visibility = 'Visible'
+		$BarText.Text = ''
+		$Scan.IsEnabled = $true
+		$Progress.Value = 0
 		Update-uiMain
 		$global:CtrlIsDown = $false
 	}
