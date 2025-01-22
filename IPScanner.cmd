@@ -163,7 +163,7 @@ function List-Machines {
 	# Cycle through ARP table to populate initial ListView data and start async lookups
 	$totalItems = ($arpOutput.Count - 1)
 
-	$asyncTasks = @{}
+	$hostnameTasks = @{}
 	$vendorTasks = @{}
 
 	foreach ($line in $arpOutput) {
@@ -266,7 +266,7 @@ function processVendors {
 						}
 					}
 					Start-Sleep -Milliseconds 50
-				} while ($vendorTasks.Count -ge 5)
+				} while ($vendorTasks.Count -ge 7)
 			}
 		}
 
@@ -275,7 +275,7 @@ function processVendors {
 		$lastIP = $lastItem.IPaddress
 		$lastMAC = $lastItem.MACaddress
 		# Check Vendor
-		if ($lastItem.Vendor -eq "Identifying...") {
+		if ($lastItem.Vendor -eq 'Identifying...' -or $lastItem.Vendor -eq 'Unable to Identify') {
 			# Manual vendor lookup for the last IP only if needed
 			$lastVendor = Get-MacVendor $lastMAC
 			$lastVendorResult = if ($lastVendor -and $lastVendor.Company) {
@@ -296,11 +296,11 @@ function processVendors {
 		# Update any leftover orphans
 		Update-uiBackground{
 			foreach ($item in $listView.Items) {
-				if ($item.Vendor -eq "Identifying...") {
-					$item.Vendor = "Unable to Identify"
+				if ($item.Vendor -eq 'Identifying...') {
+					$item.Vendor = 'Unable to Identify'
 				}
-				if ($item.HostName -eq "Resolving...") {
-					$item.HostName = "Unable to Resolve"
+				if ($item.HostName -eq 'Resolving...') {
+					$item.HostName = 'Unable to Resolve'
 				}
 			}
 			$listView.Items.Refresh()
@@ -325,7 +325,7 @@ function processHostnames {
 		}
 
 		$totalhostnamejobs = $listView.Items.Count
-		$asyncTasks = @{}
+		$hostnameTasks = @{}
 
 		# Process found devices
 		foreach ($item in $listView.Items) {
@@ -333,12 +333,12 @@ function processHostnames {
 			$mac = $item.MACaddress
 			if ($ip -ne $internalIP) {
 				$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
-				$asyncTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
+				$hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
 				do {
 					# Process hostname tasks
-					foreach ($ipCheck in @($asyncTasks.Keys)) {
-						if ($asyncTasks[$ipCheck].Task.IsCompleted) {
-							$entry = $asyncTasks[$ipCheck].Task.Result
+					foreach ($ipCheck in @($hostnameTasks.Keys)) {
+						if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
+							$entry = $hostnameTasks[$ipCheck].Task.Result
 							Update-uiBackground{
 								foreach ($it in $listView.Items) {
 									if ($it.IPaddress -eq $ipCheck) {
@@ -351,11 +351,11 @@ function processHostnames {
 									}
 								}
 							}
-							$asyncTasks.Remove($ipCheck)
+							$hostnameTasks.Remove($ipCheck)
 						}
 					}
 					Start-Sleep -Milliseconds 50
-				} while ($asyncTasks.Count -ge 5)
+				} while ($hostnameTasks.Count -ge 7)
 			}
 		}
 
@@ -364,13 +364,13 @@ function processHostnames {
 		$lastIP = $lastItem.IPaddress
 		$lastMAC = $lastItem.MACaddress
 		# Check HostName
-		if ($lastItem.HostName -eq "Resolving...") {
+		if ($lastItem.HostName -eq 'Resolving...' -or $lastItem.HostName -eq 'Unable to Resolve') {
 			# Manual hostname lookup for the last IP only if needed
 			try {
 				$dnsEntry = [System.Net.Dns]::GetHostEntryAsync($lastIP).Result
-				$lastHostName = if ($dnsEntry.HostName) { $dnsEntry.HostName } else { "Unable to Resolve" }
+				$lastHostName = if ($dnsEntry.HostName) { $dnsEntry.HostName } else { 'Unable to Resolve' }
 			} catch {
-				$lastHostName = "Unable to Resolve"
+				$lastHostName = 'Unable to Resolve'
 			}
 			Update-uiBackground{
 				$lastItem.HostName = $lastHostName
@@ -385,15 +385,15 @@ function processHostnames {
 		# Update any leftover orphans
 		Update-uiBackground{
 			foreach ($item in $listView.Items) {
-				if ($item.HostName -eq "Resolving...") {
-					$item.HostName = "Unable to Resolve"
+				if ($item.HostName -eq 'Resolving...') {
+					$item.HostName = 'Unable to Resolve'
 				}
 			}
 			$listView.Items.Refresh()
 		}
 
 		# Clean up jobs
-		Remove-Job -Job $asyncTasks.Values -Force
+		Remove-Job -Job $hostnameTasks.Values -Force
 
 	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac)
 	$hostnameLookupThread.RunspacePool = $RunspacePool
