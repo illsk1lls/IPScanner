@@ -1101,21 +1101,38 @@ $Main.Add_KeyUp({
 	}
 })
 
-# Wait for background jobs to finish
-function WaitForCompletion {
+# Wait for background jobs to finish with progress tracking
+function TrackProgress {
+	$totalJobs = (($listView.Items.Count - 2) * 2)
+	$completedJobs = 0
+
 	do {
-		$hasUnresolved = $false
+		$hostJobsLeft = 0
+		$vendorJobsLeft = 0
+
 		foreach ($item in $listView.Items) {
-			if ($item.HostName -eq "Resolving..." -or $item.Vendor -eq "Identifying...") {
-				$hasUnresolved = $true
-				break
+			if ($item.HostName -eq "Resolving...") {
+				$hostJobsLeft++
+			} else {
+				$completedJobs++
+			}
+			if ($item.Vendor -eq "Identifying...") {
+				$vendorJobsLeft++
+			} else {
+				if ($item.HostName -ne "Resolving...") {
+					$completedJobs++
+				}
 			}
 		}
-		if ($hasUnresolved) {
-			Start-Sleep -Milliseconds 500  # Wait a bit before checking again
-			Update-uiMain
+
+		# Adjust completedJobs to avoid double-counting
+		$completedJobs = [math]::Floor($completedJobs / 2)
+		$completedPercentage = if ($totalJobs -gt 0) { ($completedJobs / $totalJobs) * 100 } else { 0 }
+		Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
+		if (($hostJobsLeft + $vendorJobsLeft) -ge 1) {
+			Start-Sleep -Milliseconds 250
 		}
-	} while ($hasUnresolved)
+	} while (($hostJobsLeft + $vendorJobsLeft) -ge 1)
 }
 
 # Ensure clean ListView
@@ -1170,9 +1187,7 @@ $Scan.Add_Click({
 		List-Machines
 		processVendors
 		processHostnames
-		$vendorLookupThread.EndInvoke($vendorScan)
-		$hostnameLookupThread.EndInvoke($hostnameScan)
-		WaitForCompletion
+		TrackProgress
 		# Hide ProgressBar, show button
 		$Progress.Visibility = 'Collapsed'
 		$Scan.Visibility = 'Visible'
