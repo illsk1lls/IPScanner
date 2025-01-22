@@ -118,7 +118,7 @@ function Scan-Subnet {
 	1..254 | ForEach-Object {
 		Test-Connection -ComputerName "$gatewayPrefix$_" -Count 1 -AsJob | Out-Null
 		Update-Progress ($_ * (100 / 254)) 'Sending Packets'
-		Start-Sleep -Milliseconds 5
+		Start-Sleep -Milliseconds 10
 	}
 	Update-Progress 100 'Sending Packets'
 }
@@ -129,7 +129,7 @@ function waitForResponses {
 
 	1..100 | ForEach-Object {
 		Update-Progress $_ 'Listening'
-		Start-Sleep -Milliseconds 140
+		Start-Sleep -Milliseconds 150
 	}
 	Update-Progress 100 'Listening'
 }
@@ -266,7 +266,7 @@ function processVendors {
 						}
 					}
 					Start-Sleep -Milliseconds 50
-				} while ($vendorTasks.Count -ge 7)
+				} while ($vendorTasks.Count -ge 5)
 			}
 		}
 
@@ -286,11 +286,6 @@ function processVendors {
 			Update-uiBackground{
 				$lastItem.Vendor = $lastVendorResult
 			}
-		}
-
-		# Refresh the ListView if any updates were made
-		Update-uiBackground{
-			$listView.Items.Refresh()
 		}
 
 		# Update any leftover orphans
@@ -355,7 +350,7 @@ function processHostnames {
 						}
 					}
 					Start-Sleep -Milliseconds 50
-				} while ($hostnameTasks.Count -ge 7)
+				} while ($hostnameTasks.Count -ge 5)
 			}
 		}
 
@@ -375,11 +370,6 @@ function processHostnames {
 			Update-uiBackground{
 				$lastItem.HostName = $lastHostName
 			}
-		}
-
-		# Refresh the ListView if any updates were made
-		Update-uiBackground{
-			$listView.Items.Refresh()
 		}
 
 		# Update any leftover orphans
