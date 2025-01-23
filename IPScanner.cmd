@@ -403,8 +403,8 @@ function CheckConnectivity {
 				$_.Visibility = 'Collapsed'
 			}
 		}
-		$noConnectionsLabel.Text = 'This Device'
-		$noConnectionsLabel.Visibility = 'Visible'
+		$btnNone.IsEnabled = $true
+		$btnNone.Visibility = 'Visible'
 		return
 	}
 	$global:tryToConnect = $selectedhost -replace ' (This Device)', ''
@@ -447,6 +447,8 @@ function CheckConnectivity {
 		$btnNone.Visibility = 'Collapsed'
 	}
 }
+
+
 
 # Listview column sort logic
 $sortDirections = @{}
@@ -526,10 +528,21 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 [xml]$XAML = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-		Height="500" Width="900" Background="#222222" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize">
+		Height="500" Width="900" Background="Transparent" AllowsTransparency="True" WindowStyle="None">
 	<Window.Resources>
 		<ControlTemplate x:Key="NoMouseOverButtonTemplate" TargetType="Button">
 			<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+				<ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+			</Border>
+			<ControlTemplate.Triggers>
+				<Trigger Property="IsEnabled" Value="False">
+					<Setter Property="Background" Value="{x:Static SystemColors.ControlLightBrush}"/>
+					<Setter Property="Foreground" Value="{x:Static SystemColors.GrayTextBrush}"/>
+				</Trigger>
+			</ControlTemplate.Triggers>
+		</ControlTemplate>
+		<ControlTemplate x:Key="CloseButtonTemplate" TargetType="Button">
+			<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="0,5,0,0">
 				<ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
 			</Border>
 			<ControlTemplate.Triggers>
@@ -565,7 +578,9 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					<Setter Property="Foreground" Value="#EEEEEE"/>
 				</Trigger>
 				<Trigger Property="IsMouseOver" Value="True">
-					<Setter Property="Background" Value="Transparent" />
+					<Setter Property="Background" Value="{x:Static SystemColors.GrayTextBrush}" />
+					<Setter Property="Foreground" Value="#000000" />
+					<Setter Property="FontWeight" Value="Bold"/>
 					<Setter Property="BorderBrush" Value="#FF00BFFF" />
 				</Trigger>
 				<MultiTrigger>
@@ -573,8 +588,8 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						<Condition Property="IsSelected" Value="true" />
 						<Condition Property="Selector.IsSelectionActive" Value="true" />
 					</MultiTrigger.Conditions>
-					<Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
-					<Setter Property="Foreground" Value="#FFFFFF" />
+					<Setter Property="Background" Value="{x:Static SystemColors.ControlLightBrush}" />
+					<Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
 					<Setter Property="FontWeight" Value="Bold"/>
 				</MultiTrigger>
 			</Style.Triggers>
@@ -648,153 +663,185 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 			</Style.Triggers>
 		</Style>
 	</Window.Resources>
-	<Grid Margin="0,0,50,0">
-		<Grid Name="ScanContainer" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,9,0,0">
-			<Button Name="Scan" Width="777" Height="30" Background="#777777" Foreground="#000000" FontWeight="Bold" Template="{StaticResource NoMouseOverButtonTemplate}">
-				<Button.Content>
-					<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-						<TextBlock Name="ScanButtonText" Text="Scan" Foreground="#000000" FontWeight="Bold" />
-						<Image Name="scanAdminIcon" Width="16" Height="16" Margin="5,0,0,0" Visibility="Collapsed"/>
+	<Border Background="#222222" CornerRadius="5,5,5,5">
+		<Grid>
+			<Grid.RowDefinitions>
+				<RowDefinition Height="30"/>
+				<RowDefinition Height="*"/>
+			</Grid.RowDefinitions>
+			<Border Background="#CCCCCC" Grid.Row="0" CornerRadius="5,5,0,0">
+				<Grid>
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="*"/>
+						<ColumnDefinition Width="Auto"/>
+					</Grid.ColumnDefinitions>
+					<Image Name="WindowIconImage" Width="24" Height="24" VerticalAlignment="Center" Margin="8,0,8,0"/>
+					<TextBlock Name="TitleBar" Foreground="Black" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,0,5,0" Grid.Column="1"/>
+					<Grid Grid.Column="2">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="Auto"/>
+							<ColumnDefinition Width="Auto"/>
+						</Grid.ColumnDefinitions>
+						<TextBlock Name="externalIPt" Foreground="Black" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,5,0"/>
+						<TextBlock Name="domainName" Foreground="Black" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,5,0" Grid.Column="1"/>
+					</Grid>
+					<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Grid.Column="3">
+						<Button Name="btnMinimize" Content="_" Width="30" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+						<Button Name="btnClose" Content="X" Width="30" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource CloseButtonTemplate}"/>
 					</StackPanel>
-				</Button.Content>
-				<Button.BorderBrush>
-					<SolidColorBrush x:Name="CycleBrush" Color="White"/>
-				</Button.BorderBrush>
-			</Button>
-			<ProgressBar Name="Progress" Foreground="#FF00BFFF" Background="#777777" Value="0" Maximum="100" Width="777" Height="30" Visibility="Collapsed"/>
-			<TextBlock Name="BarText" Foreground="#000000" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-		</Grid>
-		<ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="12,49,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
-			<ListView.View>
-				<GridView>
-					<GridViewColumn Header="MAC Address" DisplayMemberBinding="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-					<GridViewColumn Header="Vendor" DisplayMemberBinding="{Binding Vendor}" Width="250" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-					<GridViewColumn Header="IP Address" DisplayMemberBinding="{Binding IPaddress}" Width="140" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-					<GridViewColumn Header="Host Name" DisplayMemberBinding="{Binding HostName}" Width="314" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-				</GridView>
-			</ListView.View>
-			<ListView.ContextMenu>
-				<ContextMenu>
-					<MenuItem Header="Export">
-						<MenuItem Header="HTML" Name="ExportToHTML"/>
-						<MenuItem Header="CSV" Name="ExportToCSV"/>
-						<MenuItem Header="Text" Name="ExportToText"/>
-					</MenuItem>
-				</ContextMenu>
-			</ListView.ContextMenu>
-		</ListView>
-		<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
-			<Border Width="350" Height="240" BorderThickness="0.70" BorderBrush="#FF00BFFF">
-				<Grid Background="Transparent">
-					<Grid.RowDefinitions>
-						<RowDefinition Height="Auto"/>
-						<RowDefinition Height="*"/>
-					</Grid.RowDefinitions>
-					<StackPanel Margin="10" Grid.Row="1">
-						<TextBlock Name="pHost" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Margin="15,0,0,0"/>
-						<TextBlock Name="pIP" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
-						<TextBlock Name="pMAC" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
-						<TextBlock Name="pVendor" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
-						<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,35,0,0">
-							<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
-								<Button.Effect>
-									<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-								</Button.Effect>
-								<Button.Resources>
-									<Storyboard x:Key="mouseEnterAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
-									</Storyboard>
-									<Storyboard x:Key="mouseLeaveAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
-									</Storyboard>
-								</Button.Resources>
-								<Button.RenderTransform>
-									<TranslateTransform/>
-								</Button.RenderTransform>
-							</Button>
-							<Button Name="btnWebInterface" Width="40" Height="32" ToolTip="Connect via Web Interface" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
-								<Button.Effect>
-									<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-								</Button.Effect>
-								<Button.Resources>
-									<Storyboard x:Key="mouseEnterAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
-									</Storyboard>
-									<Storyboard x:Key="mouseLeaveAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
-									</Storyboard>
-								</Button.Resources>
-								<Button.RenderTransform>
-									<TranslateTransform/>
-								</Button.RenderTransform>
-							</Button>
-							<Button Name="btnShare" Width="40" Height="32" ToolTip="Connect via Share" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
-								<Button.Effect>
-									<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-								</Button.Effect>
-								<Button.Resources>
-									<Storyboard x:Key="mouseEnterAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
-									</Storyboard>
-									<Storyboard x:Key="mouseLeaveAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
-									</Storyboard>
-								</Button.Resources>
-								<Button.RenderTransform>
-									<TranslateTransform/>
-								</Button.RenderTransform>
-							</Button>
-							<Button Name="btnNone" Width="40" Height="32" ToolTip="No Connections Found" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
-								<Button.Effect>
-									<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-								</Button.Effect>
-								<Button.Resources>
-									<Storyboard x:Key="mouseEnterAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
-									</Storyboard>
-									<Storyboard x:Key="mouseLeaveAnimation">
-										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
-										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
-									</Storyboard>
-								</Button.Resources>
-								<Button.RenderTransform>
-									<TranslateTransform/>
-								</Button.RenderTransform>
-							</Button>
-						</StackPanel>
-					</StackPanel>
-					<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,10,0,0" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}" Panel.ZIndex="1"/>
 				</Grid>
 			</Border>
-			<Canvas.ContextMenu>
-				<ContextMenu>
-					<MenuItem Header="Copy">
-						<MenuItem Header="IP Address" Name="PopupContextCopyIP"/>
-						<MenuItem Header="Hostname" Name="PopupContextCopyHostname"/>
-						<MenuItem Header="MAC Address" Name="PopupContextCopyMAC"/>
-						<MenuItem Header="Vendor" Name="PopupContextCopyVendor"/>
-						<Separator/>
-						<MenuItem Header="All" Name="PopupContextCopyAll"/>
-					</MenuItem>
-				</ContextMenu>
-			</Canvas.ContextMenu>
-		</Canvas>
-	</Grid>
+			<Grid Grid.Row="1" Margin="0,0,50,0">
+				<Grid Name="ScanContainer" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,11,0,0">
+					<Button Name="Scan" Width="777" Height="30" Background="#777777" Foreground="#000000" FontWeight="Bold" Template="{StaticResource NoMouseOverButtonTemplate}">
+						<Button.Content>
+							<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+								<TextBlock Name="ScanButtonText" Text="Scan" Foreground="#000000" FontWeight="Bold" />
+								<Image Name="scanAdminIcon" Width="16" Height="16" Margin="5,0,0,0" Visibility="Collapsed"/>
+							</StackPanel>
+						</Button.Content>
+						<Button.BorderBrush>
+							<SolidColorBrush x:Name="CycleBrush" Color="White"/>
+						</Button.BorderBrush>
+					</Button>
+					<ProgressBar Name="Progress" Foreground="#FF00BFFF" Background="#777777" Value="0" Maximum="100" Width="777" Height="30" Visibility="Collapsed"/>
+					<TextBlock Name="BarText" Foreground="#000000" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+				</Grid>
+				<ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="19,52,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
+					<ListView.View>
+						<GridView>
+							<GridViewColumn Header="MAC Address" DisplayMemberBinding="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+							<GridViewColumn Header="Vendor" DisplayMemberBinding="{Binding Vendor}" Width="250" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+							<GridViewColumn Header="IP Address" DisplayMemberBinding="{Binding IPaddress}" Width="140" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+							<GridViewColumn Header="Host Name" DisplayMemberBinding="{Binding HostName}" Width="314" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+						</GridView>
+					</ListView.View>
+					<ListView.ContextMenu>
+						<ContextMenu>
+							<MenuItem Header="Export">
+								<MenuItem Header="HTML" Name="ExportToHTML"/>
+								<MenuItem Header="CSV" Name="ExportToCSV"/>
+								<MenuItem Header="Text" Name="ExportToText"/>
+							</MenuItem>
+						</ContextMenu>
+					</ListView.ContextMenu>
+				</ListView>
+				<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
+					<Border Width="350" Height="240" BorderThickness="0.70" BorderBrush="#FF00BFFF">
+						<Grid Background="Transparent">
+							<Grid.RowDefinitions>
+								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="*"/>
+							</Grid.RowDefinitions>
+							<StackPanel Margin="10" Grid.Row="1">
+								<TextBlock Name="pHost" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Margin="15,0,0,0"/>
+								<TextBlock Name="pIP" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
+								<TextBlock Name="pMAC" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
+								<TextBlock Name="pVendor" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
+								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,35,0,0">
+									<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
+										<Button.Effect>
+											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+										</Button.Effect>
+										<Button.Resources>
+											<Storyboard x:Key="mouseEnterAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+											</Storyboard>
+											<Storyboard x:Key="mouseLeaveAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+											</Storyboard>
+										</Button.Resources>
+										<Button.RenderTransform>
+											<TranslateTransform/>
+										</Button.RenderTransform>
+									</Button>
+									<Button Name="btnWebInterface" Width="40" Height="32" ToolTip="Connect via Web Interface" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
+										<Button.Effect>
+											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+										</Button.Effect>
+										<Button.Resources>
+											<Storyboard x:Key="mouseEnterAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+											</Storyboard>
+											<Storyboard x:Key="mouseLeaveAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+											</Storyboard>
+										</Button.Resources>
+										<Button.RenderTransform>
+											<TranslateTransform/>
+										</Button.RenderTransform>
+									</Button>
+									<Button Name="btnShare" Width="40" Height="32" ToolTip="Connect via Share" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+										<Button.Effect>
+											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+										</Button.Effect>
+										<Button.Resources>
+											<Storyboard x:Key="mouseEnterAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+											</Storyboard>
+											<Storyboard x:Key="mouseLeaveAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+											</Storyboard>
+										</Button.Resources>
+										<Button.RenderTransform>
+											<TranslateTransform/>
+										</Button.RenderTransform>
+									</Button>
+									<Button Name="btnNone" Width="40" Height="32" ToolTip="No Connections Found" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+										<Button.Effect>
+											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+										</Button.Effect>
+										<Button.Resources>
+											<Storyboard x:Key="mouseEnterAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+											</Storyboard>
+											<Storyboard x:Key="mouseLeaveAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+											</Storyboard>
+										</Button.Resources>
+										<Button.RenderTransform>
+											<TranslateTransform/>
+										</Button.RenderTransform>
+									</Button>
+								</StackPanel>
+							</StackPanel>
+							<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,10,0,0" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}" Panel.ZIndex="1"/>
+						</Grid>
+					</Border>
+					<Canvas.ContextMenu>
+						<ContextMenu>
+							<MenuItem Header="Copy">
+								<MenuItem Header="IP Address" Name="PopupContextCopyIP"/>
+								<MenuItem Header="Hostname" Name="PopupContextCopyHostname"/>
+								<MenuItem Header="MAC Address" Name="PopupContextCopyMAC"/>
+								<MenuItem Header="Vendor" Name="PopupContextCopyVendor"/>
+								<Separator/>
+								<MenuItem Header="All" Name="PopupContextCopyAll"/>
+							</MenuItem>
+						</ContextMenu>
+					</Canvas.ContextMenu>
+				</Canvas>
+			</Grid>
+		</Grid>
+	</Border>
 	<Window.Triggers>
 		<EventTrigger RoutedEvent="Window.Loaded">
 			<BeginStoryboard>
@@ -822,22 +869,9 @@ catch{$shell = New-Object -ComObject Wscript.Shell; $shell.Popup("Unable to load
 # Store Form Objects In PowerShell
 $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main.FindName($_.Name)}
 
-# Set Title and Add Closing
+# Set Title
 $Main.Title = "$AppId"
-$Main.Add_ContentRendered({
-	$Main.Activate()
-})
-
-$pCloseButton.Add_Click({
-	$PopupCanvas.Visibility = 'Hidden'
-})
-
-$pCloseButton.Add_MouseEnter({
-	$pCloseButton.Background='#ff0000'
-})
-$pCloseButton.Add_MouseLeave({
-	$pCloseButton.Background='#111111'
-})
+$titleBar.Text = "$AppId"
 
 $Main.Add_Closing({
 	# Clean up RunspacePool if it exists
@@ -856,6 +890,58 @@ $Main.Add_Closing({
 	$Main.Add_Closed({
 		[Environment]::Exit(0)
 	})
+})
+
+$Main.Add_Loaded({
+	$Main.Dispatcher.Invoke([action]{
+		$Main.Activate()
+	}, [Windows.Threading.DispatcherPriority]::Background)
+})
+
+# Center screen pragmatically
+$screen = [System.Windows.SystemParameters]::WorkArea
+$windowLeft = ($screen.Width - $Main.Width) / 2
+$windowTop = ($screen.Height - $Main.Height) / 2
+$Main.Left = $windowLeft
+$Main.Top = $windowTop
+
+# Event Handlers for Minimize and Close buttons
+
+$btnMinimize.Add_Click({
+	$Main.WindowState = [System.Windows.WindowState]::Minimized
+})
+
+$btnMinimize.Add_MouseEnter({
+	$btnMinimize.Background='#AAAAAA'
+})
+$btnMinimize.Add_MouseLeave({
+	$btnMinimize.Background='#CCCCCC'
+})
+
+$btnClose.Add_Click({
+	$Main.Close()
+})
+
+$btnClose.Add_MouseEnter({
+	$btnClose.Background='#ff0000'
+})
+$btnClose.Add_MouseLeave({
+	$btnClose.Background='#CCCCCC'
+})
+
+$Main.Add_MouseLeftButtonDown({
+	$Main.DragMove()
+})
+
+$pCloseButton.Add_Click({
+	$PopupCanvas.Visibility = 'Hidden'
+})
+
+$pCloseButton.Add_MouseEnter({
+	$pCloseButton.Background='#ff0000'
+})
+$pCloseButton.Add_MouseLeave({
+	$pCloseButton.Background='#111111'
 })
 
 # Define icons
@@ -880,6 +966,8 @@ foreach ($icon in $icons) {
 				$Main.Icon = $bitmapSource
 				$Main.TaskbarItemInfo.Overlay = $bitmapSource
 				$Main.TaskbarItemInfo.Description = $AppId
+				($Main.FindName('WindowIconImage')).Source = $bitmapSource
+				($Main.FindName('WindowIconImage')).SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 			}
 			"Image" {
 				$element.Source = $bitmapSource
@@ -1291,7 +1379,8 @@ $Scan.Add_Click({
 		$hostNameColumn.Width = 314
 		Update-uiMain
 		Get-HostInfo
-		$Main.Title="$AppId `- `[ External IP: $externalIP `] `- `[ Domain: $domain `]"
+		$externalIPt.Text = "`- `[ External IP: $externalIP `]"
+		$domainName.Text = "`- `[ Domain: $domain `]"
 		Update-uiMain
 		Scan-Subnet
 		waitForResponses
