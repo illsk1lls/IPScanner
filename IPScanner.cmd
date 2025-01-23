@@ -154,7 +154,7 @@ function List-Machines {
 	$self = 0
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
 
-	# Get My Vendor via Mac lookup
+	# Get Vendor via Mac (thanks to u/mprz)
 	$ProgressPreference = 'SilentlyContinue'
 	$tryMyVendor = (irm "https://www.macvendorlookup.com/api/v2/$($myMac.Replace(':','').Substring(0,6))" -Method Get).Company
 	$ProgressPreference = 'Continue'
@@ -213,7 +213,6 @@ function processVendors {
 		}
 
 		function Get-MacVendor($mac) {
-			# Get Vendor via Mac (thanks to u/mprz)
 			try {
 				$ProgressPreference = 'SilentlyContinue'
 				$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
@@ -253,14 +252,13 @@ function processVendors {
 							} else {
 								'Unable to Identify'
 							}
-							Update-uiBackground{
-								foreach ($it in $listView.Items) {
-									if ($it.IPaddress -eq $ipCheck) {
+							foreach ($it in $listView.Items) {
+								if ($it.IPaddress -eq $ipCheck) {
+									Update-uiBackground{
 										$it.Vendor = $vendorResult
 										$listView.Items.Refresh()
 									}
 								}
-
 							}
 							$vendorTasks.Remove($ipCheck)
 						}
@@ -289,17 +287,16 @@ function processVendors {
 		}
 
 		# Update any leftover orphans
-		Update-uiBackground{
-			foreach ($item in $listView.Items) {
-				if ($item.Vendor -eq 'Identifying...') {
+
+		foreach ($item in $listView.Items) {
+			if ($item.Vendor -eq 'Identifying...') {
+				Update-uiBackground{
 					$item.Vendor = 'Unable to Identify'
 				}
-				if ($item.HostName -eq 'Resolving...') {
-					$item.HostName = 'Unable to Resolve'
-				}
 			}
-			$listView.Items.Refresh()
 		}
+		$listView.Items.Refresh()
+
 
 		# Clean up jobs
 		Remove-Job -Job $vendorTasks.Values -Force
@@ -334,15 +331,18 @@ function processHostnames {
 					foreach ($ipCheck in @($hostnameTasks.Keys)) {
 						if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
 							$entry = $hostnameTasks[$ipCheck].Task.Result
-							Update-uiBackground{
-								foreach ($it in $listView.Items) {
-									if ($it.IPaddress -eq $ipCheck) {
-										$it.HostName = if ([string]::IsNullOrEmpty($entry.HostName)) {
-											"Unable to Resolve"
-										} else {
-											$entry.HostName
+							foreach ($it in $listView.Items) {
+								if ($it.IPaddress -eq $ipCheck) {
+									if ([string]::IsNullOrEmpty($entry.HostName)) {
+										Update-uiBackground {
+											$it.HostName = "Unable to Resolve"
+											$listView.Items.Refresh()
 										}
-										$listView.Items.Refresh()
+									} else {
+										Update-uiBackground {
+											$it.HostName = $entry.HostName
+											$listView.Items.Refresh()
+										}
 									}
 								}
 							}
@@ -397,7 +397,7 @@ function CheckConnectivity {
 	)
 	if ($selectedhost -match ' (This Device)') {
 		# Disable all buttons for 'This Device'
-		@('btnRDP', 'btnWebInterface', 'btnShare') | ForEach-Object {
+		@('btnRDP', 'btnWebInterface', 'btnShare', 'btnNone') | ForEach-Object {
 			Get-Variable $_ -ValueOnly | ForEach-Object {
 				$_.IsEnabled = $false
 				$_.Visibility = 'Collapsed'
@@ -438,8 +438,14 @@ function CheckConnectivity {
 	$btnRDP.IsEnabled = $results.RDP -and $HostName -ne $tryToConnect
 	$btnRDP.Visibility = if ($btnRDP.IsEnabled) { 'Visible' } else { 'Collapsed' }
 
-	# Show 'No Connections Found' if no services are available
-	$noConnectionsLabel.Visibility = if (-not $btnRDP.IsEnabled -and -not $btnWebInterface.IsEnabled -and -not $btnShare.IsEnabled) { 'Visible' } else { 'Collapsed' }
+	# Show no connections icon if nothing is available
+	if (-not $btnRDP.IsEnabled -and -not $btnWebInterface.IsEnabled -and -not $btnShare.IsEnabled) {
+		$btnNone.IsEnabled = $true
+		$btnNone.Visibility = 'Visible'
+	} else {
+		$btnNone.IsEnabled = $false
+		$btnNone.Visibility = 'Collapsed'
+	}
 }
 
 # Listview column sort logic
@@ -750,12 +756,43 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 									<TranslateTransform/>
 								</Button.RenderTransform>
 							</Button>
-							<TextBlock Name="noConnectionsLabel" Text="No Connections Found" Foreground="#EEEEEE" FontSize="12" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,8,0,0"/>
+							<Button Name="btnNone" Width="40" Height="32" ToolTip="No Connections Found" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+								<Button.Effect>
+									<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+								</Button.Effect>
+								<Button.Resources>
+									<Storyboard x:Key="mouseEnterAnimation">
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+									</Storyboard>
+									<Storyboard x:Key="mouseLeaveAnimation">
+										<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+										<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+									</Storyboard>
+								</Button.Resources>
+								<Button.RenderTransform>
+									<TranslateTransform/>
+								</Button.RenderTransform>
+							</Button>
 						</StackPanel>
 					</StackPanel>
 					<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,10,0,0" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}" Panel.ZIndex="1"/>
 				</Grid>
 			</Border>
+			<Canvas.ContextMenu>
+				<ContextMenu>
+					<MenuItem Header="Copy">
+						<MenuItem Header="IP Address" Name="PopupContextCopyIP"/>
+						<MenuItem Header="Hostname" Name="PopupContextCopyHostname"/>
+						<MenuItem Header="MAC Address" Name="PopupContextCopyMAC"/>
+						<MenuItem Header="Vendor" Name="PopupContextCopyVendor"/>
+						<Separator/>
+						<MenuItem Header="All" Name="PopupContextCopyAll"/>
+					</MenuItem>
+				</ContextMenu>
+			</Canvas.ContextMenu>
 		</Canvas>
 	</Grid>
 	<Window.Triggers>
@@ -827,7 +864,8 @@ $icons = @(
 	@{File = 'C:\Windows\System32\imageres.dll'; Index = 73; ElementName = "scanAdminIcon"; Type = "Image"},
 	@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ElementName = "btnRDP"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
-	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"}
+	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"},
+	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"}
 )
 
 # Extract and set icons
@@ -904,6 +942,14 @@ $btnShare.Add_MouseEnter({
 
 $btnShare.Add_MouseLeave({
 	$btnShare.FindResource("mouseLeaveAnimation").Begin($btnShare)
+})
+
+$btnNone.Add_MouseEnter({
+	$btnNone.FindResource("mouseEnterAnimation").Begin($btnNone)
+})
+
+$btnNone.Add_MouseLeave({
+	$btnNone.FindResource("mouseLeaveAnimation").Begin($btnNone)
 })
 
 # Export List in HTML format
@@ -1007,19 +1053,19 @@ $ExportToText.Add_Click({
 			$textContent = @"
 NETWORK SCAN RESULTS
 
-EXTERNAL IP: $global:externalIP
-DOMAIN     : $global:domain
-DATE/TIME  : $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+EXTERNAL IP : $global:externalIP
+DOMAIN      : $global:domain
+DATE/TIME   : $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 
 --------------------------------------
 "@
 			$textContent += $listView.Items | ForEach-Object {
 @"
 
-MAC     : $($_.MACaddress)
-Vendor  : $($_.Vendor)
-IP      : $($_.IPaddress)
-Hostname: $($_.HostName.Replace(' (This Device)',''))
+MAC      : $($_.MACaddress)
+Vendor   : $($_.Vendor)
+IP       : $($_.IPaddress)
+Hostname : $($_.HostName.Replace(' (This Device)',''))
 --------------------------------------
 "@
 			}
@@ -1040,6 +1086,7 @@ $ListView.AddHandler(
 	[System.Windows.RoutedEventHandler]$listViewSortColumn
 )
 
+# Find and assign Hostname column from listView to control width when scrollbar is present
 $hostNameColumn = ($listView.View.Columns | Where-Object {$_.Header -eq "Host Name"})
 
 $listView.Add_MouseDoubleClick({
@@ -1065,6 +1112,80 @@ $listView.Add_MouseLeftButtonDown({
 	$PopupCanvas.Visibility = 'Hidden'
 	$listView.SelectedItems.Clear()
 })
+
+# Single item pop-up context menu, IP Address to clipboard
+$PopupContextCopyIP_Click = {
+	if ($PopupCanvas.Visibility -eq 'Visible') {
+		$ipText = $pIP.Text -replace 'IP: '
+		Set-Clipboard -Value $ipText
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("IP Address copied to clipboard!",0,'Info:',0x0) | Out-Null
+	} else {
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("No item available to copy IP Address from!",0,'Warning:',0x0) | Out-Null
+	}
+}
+$PopupContextCopyIP.Add_Click($PopupContextCopyIP_Click)
+
+# Single item pop-up context menu, Hostname to clipboard
+$PopupContextCopyHostname_Click = {
+	if ($PopupCanvas.Visibility -eq 'Visible') {
+		$hostText = $pHost.Text -replace 'Host: '
+		Set-Clipboard -Value $hostText
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("Hostname copied to clipboard!",0,'Info:',0x0) | Out-Null
+	} else {
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("No item available to copy Hostname from!",0,'Warning:',0x0) | Out-Null
+	}
+}
+$PopupContextCopyHostname.Add_Click($PopupContextCopyHostname_Click)
+
+# Single item pop-up context menu, MAC Address to clipboard
+$PopupContextCopyMAC_Click = {
+	if ($PopupCanvas.Visibility -eq 'Visible') {
+		$macText = $pMAC.Text -replace 'MAC: '
+		Set-Clipboard -Value $macText
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("MAC Address copied to clipboard!",0,'Info:',0x0) | Out-Null
+	} else {
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("No item available to copy MAC Address from!",0,'Warning:',0x0) | Out-Null
+	}
+}
+$PopupContextCopyMAC.Add_Click($PopupContextCopyMAC_Click)
+
+# Single item pop-up context menu, Vendor to clipboard
+$PopupContextCopyVendor_Click = {
+	if ($PopupCanvas.Visibility -eq 'Visible') {
+		$vendorText = $pVendor.Text -replace 'Vendor: '
+		Set-Clipboard -Value $vendorText
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("Vendor copied to clipboard!",0,'Info:',0x0) | Out-Null
+	} else {
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("No item available to copy Vendor from!",0,'Warning:',0x0) | Out-Null
+	}
+}
+$PopupContextCopyVendor.Add_Click($PopupContextCopyVendor_Click)
+
+# Single item pop-up context menu, All details to clipboard
+$PopupContextCopyAll_Click = {
+	if ($PopupCanvas.Visibility -eq 'Visible') {
+		$hostText = $pHost.Text -replace 'Host: '
+		$ipText = $pIP.Text -replace 'IP: '
+		$macText = $pMAC.Text -replace 'MAC: '
+		$vendorText = $pVendor.Text -replace 'Vendor: '
+		$details = "Host: $hostText`nIP: $ipText`nMAC: $macText`nVendor: $vendorText"
+		Set-Clipboard -Value $details
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("All details copied to clipboard!",0,'Info:',0x0) | Out-Null
+	} else {
+		$shell = New-Object -ComObject Wscript.Shell
+		$shell.Popup("No item available to copy details from!",0,'Warning:',0x0) | Out-Null
+	}
+}
+$PopupContextCopyAll.Add_Click($PopupContextCopyAll_Click)
 
 # Clear CTRL key value
 $global:CtrlIsDown = $false
