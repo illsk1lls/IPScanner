@@ -159,8 +159,6 @@ function List-Machines {
 	$ProgressPreference = 'Continue'
 	$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unable to Identify'}
 
-	$isWifi = $adapter -match "Wi-Fi|Wireless"
-
 	# Cycle through ARP table to populate initial ListView data and start async lookups
 	$totalItems = ($arpOutput.Count - 1)
 
@@ -173,17 +171,9 @@ function List-Machines {
 		# Determine if the IP was pingable
 		$pingResult = $ip -in $global:successfulPings
 		$pingImage = if ($pingResult) {
-			if ($isWifi) {
-				$listIcons['pingTrueIconWifi']
-			} else {
-				$listIcons['pingTrueIcon']
-			}
+			$listIcons['pingTrueIcon']
 		} else {
-			if ($isWifi) {
-				$listIcons['pingFalseIconWifi']
-			} else {
-				$listIcons['pingFalseIcon']
-			}
+			$listIcons['pingFalseIcon']
 		}
 
 		# Format and display
@@ -210,25 +200,14 @@ function List-Machines {
 				}
 				$listView.Items.Add($item)
 			} else {
-				if($isWifi){
-					$listView.Items.Add([pscustomobject]@{
-						'MACaddress' = $myMac;
-						'Vendor' = $myVendor;
-						'IPaddress' = $internalIP;
-						'HostName' = "$hostName (This Device)";
-						'Ping' = $true
-						'PingImage' = $listIcons['pingTrueIconWifi']
-					})
-				} else {
-					$listView.Items.Add([pscustomobject]@{
-						'MACaddress' = $myMac;
-						'Vendor' = $myVendor;
-						'IPaddress' = $internalIP;
-						'HostName' = "$hostName (This Device)";
-						'Ping' = $true
-						'PingImage' = $listIcons['pingTrueIcon']
-					})
-				}
+				$listView.Items.Add([pscustomobject]@{
+					'MACaddress' = $myMac;
+					'Vendor' = $myVendor;
+					'IPaddress' = $internalIP;
+					'HostName' = "$hostName (This Device)";
+					'Ping' = $true
+					'PingImage' = $listIcons['pingTrueIcon']
+				})
 				$item = [pscustomobject]@{
 					'MACaddress' = $mac;
 					'Vendor' = $vendor;
@@ -504,15 +483,8 @@ function CheckConnectivity {
 	}
 
 	# Show ping response status in popup window
-	if ($selectedItem) {
-		# Determine which icon to use based on connection type
-		if ($adapter -match "Wi-Fi|Wireless") {
-			$pingStatusImage.Source = if ($selectedItem.Ping) { $listIcons["pingTrueIconWifi"] } else { $listIcons["pingFalseIconWifi"] }
-		} else {
-			$pingStatusImage.Source = if ($selectedItem.Ping) { $listIcons["pingTrueIcon"] } else { $listIcons["pingFalseIcon"] }
-		}
-		$pingStatusText.Text = if ($selectedItem.Ping) { "Response received" } else { "No response received" }
-	}
+	$pingStatusImage.Source = if ($selectedItem.Ping) { $listIcons["pingTrueIcon"] } else { $listIcons["pingFalseIcon"] }
+	$pingStatusText.Text = if ($selectedItem.Ping) { "Response received" } else { "No response received" }
 }
 
 # Listview column sort logic
@@ -1044,10 +1016,8 @@ $icons = @(
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"},
 	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"},
-	@{File = 'C:\Windows\System32\pnidui.dll'; Index = 12; ElementName = "pingTrueIcon"; Type = "ListIcon"},
-	@{File = 'C:\Windows\System32\pnidui.dll'; Index = 13; ElementName = "pingFalseIcon"; Type = "ListIcon"},
-	@{File = 'C:\Windows\System32\pnidui.dll'; Index = 5; ElementName = "pingTrueIconWifi"; Type = "ListIcon"},
-	@{File = 'C:\Windows\System32\pnidui.dll'; Index = 11; ElementName = "pingFalseIconWifi"; Type = "ListIcon"}
+	@{File = 'C:\Windows\System32\netshell.dll'; Index = 65; ElementName = "pingTrueIcon"; Type = "ListIcon"},
+	@{File = 'C:\Windows\System32\netshell.dll'; Index = 68; ElementName = "pingFalseIcon"; Type = "ListIcon"}
 )
 
 # Extract and set icons
