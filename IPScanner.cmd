@@ -563,11 +563,11 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 				</Trigger>
 			</ControlTemplate.Triggers>
 		</ControlTemplate>
-		<Style x:Key="ListViewStyle" TargetType="{x:Type ListViewItem}" >
+		<Style x:Key="ListViewStyle" TargetType="{x:Type ListViewItem}">
 			<Setter Property="Background" Value="#111111"/>
-			<Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+			<Setter Property="Foreground" Value="#EEEEEE"/>
 			<Setter Property="FontWeight" Value="Normal"/>
-			<Setter Property="BorderThickness" Value="1"/>
+			<Setter Property="BorderThickness" Value="0.70"/>
 			<Style.Triggers>
 				<Trigger Property="ItemsControl.AlternationIndex" Value="0">
 					<Setter Property="Background" Value="#111111"/>
@@ -578,19 +578,19 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					<Setter Property="Foreground" Value="#EEEEEE"/>
 				</Trigger>
 				<Trigger Property="IsMouseOver" Value="True">
-					<Setter Property="Background" Value="{x:Static SystemColors.GrayTextBrush}" />
-					<Setter Property="Foreground" Value="#000000" />
-					<Setter Property="FontWeight" Value="Bold"/>
-					<Setter Property="BorderBrush" Value="#FF00BFFF" />
+					<Setter Property="Background" Value="#4000B7FF"/>
+					<Setter Property="Foreground" Value="#EEEEEE"/>
+					<Setter Property="BorderBrush" Value="#FF00BFFF"/>
 				</Trigger>
 				<MultiTrigger>
 					<MultiTrigger.Conditions>
-						<Condition Property="IsSelected" Value="true" />
-						<Condition Property="Selector.IsSelectionActive" Value="true" />
+						<Condition Property="IsSelected" Value="true"/>
+						<Condition Property="Selector.IsSelectionActive" Value="true"/>
 					</MultiTrigger.Conditions>
-					<Setter Property="Background" Value="{x:Static SystemColors.ControlLightBrush}" />
-					<Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+					<Setter Property="Background" Value="#4000B7FF"/>
+					<Setter Property="Foreground" Value="{x:Static SystemColors.ControlBrush}"/>
 					<Setter Property="FontWeight" Value="Bold"/>
+					<Setter Property="BorderBrush" Value="#FF00BFFF"/>
 				</MultiTrigger>
 			</Style.Triggers>
 		</Style>
@@ -669,7 +669,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 				<RowDefinition Height="30"/>
 				<RowDefinition Height="*"/>
 			</Grid.RowDefinitions>
-			<Border Background="#CCCCCC" Grid.Row="0" CornerRadius="5,5,0,0">
+			<Border Background="#DDDDDD" Grid.Row="0" CornerRadius="5,5,0,0">
 				<Grid>
 					<Grid.ColumnDefinitions>
 						<ColumnDefinition Width="Auto"/>
@@ -688,8 +688,8 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						<TextBlock Name="domainName" Foreground="Black" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,5,0" Grid.Column="1"/>
 					</Grid>
 					<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Grid.Column="3">
-						<Button Name="btnMinimize" Content="_" Width="30" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-						<Button Name="btnClose" Content="X" Width="30" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource CloseButtonTemplate}"/>
+						<Button Name="btnMinimize" Content="—" Width="40" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+						<Button Name="btnClose" Content="X" Width="40" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource CloseButtonTemplate}"/>
 					</StackPanel>
 				</Grid>
 			</Border>
@@ -729,7 +729,10 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					</ListView.ContextMenu>
 				</ListView>
 				<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
-					<Border Width="350" Height="240" BorderThickness="0.70" BorderBrush="#FF00BFFF">
+					<Border Name="PopupBorder" Width="350" Height="240" BorderThickness="0.70">
+						<Border.BorderBrush>
+							<SolidColorBrush Color="#CCCCCC"/>
+						</Border.BorderBrush>					
 						<Grid Background="Transparent">
 							<Grid.RowDefinitions>
 								<RowDefinition Height="Auto"/>
@@ -851,6 +854,11 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						<LinearColorKeyFrame Value="#FF00BFFF" KeyTime="0:0:3"/>
 						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:6"/>
 					</ColorAnimationUsingKeyFrames>
+					<ColorAnimationUsingKeyFrames Storyboard.TargetName="PopupBorder" Storyboard.TargetProperty="BorderBrush.Color" RepeatBehavior="Forever" Duration="0:0:6">
+						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:0"/>
+						<LinearColorKeyFrame Value="#FF00BFFF" KeyTime="0:0:3"/>
+						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:6"/>
+					</ColorAnimationUsingKeyFrames>					
 				</Storyboard>
 			</BeginStoryboard>
 		</EventTrigger>
@@ -864,7 +872,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 # Load XAML
 $reader = (New-Object System.Xml.XmlNodeReader $xaml)
 try{$Main = [Windows.Markup.XamlReader]::Load( $reader )}
-catch{$shell = New-Object -ComObject Wscript.Shell; $shell.Popup("Unable to load GUI, XAML Error!",0,'ERROR:',0x0) | Out-Null; Exit}
+catch{$shell = New-Object -ComObject Wscript.Shell; $shell.Popup("$_",0,'XAML ERROR:',0x0) | Out-Null; Exit}
 
 # Store Form Objects In PowerShell
 $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main.FindName($_.Name)}
@@ -1349,6 +1357,9 @@ $Scan.Add_MouseLeave({
 })
 
 $Scan.Add_Click({
+	if($PopupCanvas.Visibility -eq 'Visible') {
+		$PopupCanvas.Visibility = 'Hidden'
+	}
 	# If CTRL key is held while clicking the Scan button, offer to clear ARP cache as Admin prior to Scan process
 	if ($global:CtrlIsDown) {
 		$Scan.IsEnabled = $false
