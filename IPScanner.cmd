@@ -677,7 +677,11 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						<ColumnDefinition Width="*"/>
 						<ColumnDefinition Width="Auto"/>
 					</Grid.ColumnDefinitions>
-					<Image Name="WindowIconImage" Width="24" Height="24" VerticalAlignment="Center" Margin="8,0,8,0"/>
+					<Image Name="WindowIconImage" Width="24" Height="24" VerticalAlignment="Center" Margin="8,0,8,0">
+						<Image.Effect>
+							<DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.7" Direction="270" Color="Black"/>
+						</Image.Effect>
+					</Image>
 					<TextBlock Name="TitleBar" Foreground="Black" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,0,5,0" Grid.Column="1"/>
 					<Grid Grid.Column="2">
 						<Grid.ColumnDefinitions>
@@ -720,7 +724,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					</ListView.View>
 					<ListView.ContextMenu>
 						<ContextMenu>
-							<MenuItem Header="Export">
+							<MenuItem Header="Export" Name="ExportContext">
 								<MenuItem Header="HTML" Name="ExportToHTML"/>
 								<MenuItem Header="CSV" Name="ExportToCSV"/>
 								<MenuItem Header="Text" Name="ExportToText"/>
@@ -732,7 +736,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					<Border Name="PopupBorder" Width="350" Height="240" BorderThickness="0.70">
 						<Border.BorderBrush>
 							<SolidColorBrush Color="#CCCCCC"/>
-						</Border.BorderBrush>					
+						</Border.BorderBrush>
 						<Grid Background="Transparent">
 							<Grid.RowDefinitions>
 								<RowDefinition Height="Auto"/>
@@ -858,7 +862,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:0"/>
 						<LinearColorKeyFrame Value="#FF00BFFF" KeyTime="0:0:3"/>
 						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:6"/>
-					</ColorAnimationUsingKeyFrames>					
+					</ColorAnimationUsingKeyFrames>
 				</Storyboard>
 			</BeginStoryboard>
 		</EventTrigger>
@@ -920,10 +924,10 @@ $btnMinimize.Add_Click({
 })
 
 $btnMinimize.Add_MouseEnter({
-	$btnMinimize.Background='#AAAAAA'
+	$btnMinimize.Background='#BBBBBB'
 })
 $btnMinimize.Add_MouseLeave({
-	$btnMinimize.Background='#CCCCCC'
+	$btnMinimize.Background='#DDDDDD'
 })
 
 $btnClose.Add_Click({
@@ -934,7 +938,7 @@ $btnClose.Add_MouseEnter({
 	$btnClose.Background='#ff0000'
 })
 $btnClose.Add_MouseLeave({
-	$btnClose.Background='#CCCCCC'
+	$btnClose.Background='#DDDDDD'
 })
 
 $Main.Add_MouseLeftButtonDown({
@@ -1347,6 +1351,8 @@ if($listview.Items){
 	$listview.Items.Clear()
 }
 
+$ExportContext.IsEnabled = $false
+
 # Define Scan Button Actions
 $Scan.Add_MouseEnter({
 	$Scan.Background = '#EEEEEE'
@@ -1387,6 +1393,7 @@ $Scan.Add_Click({
 		$Progress.Value = 0
 		$BarText.Text = 'Getting localHost Info'
 		$listView.Items.Clear()
+		$ExportContext.IsEnabled = $false
 		$hostNameColumn.Width = 314
 		Update-uiMain
 		Get-HostInfo
@@ -1405,6 +1412,11 @@ $Scan.Add_Click({
 		$BarText.Text = ''
 		$Scan.IsEnabled = $true
 		$Progress.Value = 0
+		if ($listView.Items.Count -eq 0) {
+			$ExportContext.IsEnabled = $false
+		} else {
+			$ExportContext.IsEnabled = $true
+		}
 		Update-uiMain
 		$global:CtrlIsDown = $false
 	}
