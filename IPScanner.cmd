@@ -96,7 +96,7 @@ function Get-HostInfo {
 	$global:domain = (Get-CimInstance -ClassName Win32_ComputerSystem).Domain
 
 	# Mark empty as unknown
-	foreach ($item in 'hostName', 'externalIP', 'internalIP', 'adapter', 'gateway', 'domain') {
+	foreach ($item in 'hostName', 'externalIP', 'internalIP', 'gateway', 'domain') {
 		if (-not $global:item) {
 			$global:item = 'Unknown'
 		}
@@ -112,26 +112,24 @@ function Update-Progress {
 
 # Send packets across subnet
 function Scan-Subnet {
-	Update-Progress 0 'Sending Packets'
-
-	# Ping Entire Subnet
-	1..254 | ForEach-Object {
-		Test-Connection -ComputerName "$gatewayPrefix$_" -Count 1 -AsJob | Out-Null
-		Update-Progress ($_ * (100 / 254)) 'Sending Packets'
-		Start-Sleep -Milliseconds 10
+	$pingAll = 1..254 | ForEach-Object {
+		"192.168.1.$_"
 	}
-	Update-Progress 100 'Sending Packets'
+	Test-Connection -ComputerName $pingAll -Count 1 -AsJob | Out-Null
+	Get-Job | Wait-Job -ErrorAction Stop | Out-Null
+	$results = Get-Job | Receive-Job -ErrorAction Stop
+	$global:successfulPings = $results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address
+	Get-Job | Remove-Job -Force
 }
 
-# Give peers time to respond
+# Wait and listen to peers
 function waitForResponses {
-	Update-Progress 0 'Listening'
-
+	Update-Progress 0 'Scanning'
 	1..100 | ForEach-Object {
-		Update-Progress $_ 'Listening'
-		Start-Sleep -Milliseconds 150
+		Update-Progress $_ 'Scanning'
+		Start-Sleep -Milliseconds 75
 	}
-	Update-Progress 100 'Listening'
+	Update-Progress 100 'Scanning'
 }
 
 # Create peer list
@@ -143,6 +141,7 @@ function List-Machines {
 		$arpConverted.Clear()
 		$arpOutput.Clear()
 	}
+
 	# Filter for Reachable or Stale states and select only IP and MAC address
 	$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
 
@@ -160,11 +159,10 @@ function List-Machines {
 	$ProgressPreference = 'Continue'
 	$myVendor = if($tryMyVendor){$tryMyVendor.substring(0, [System.Math]::Min(35, $tryMyVendor.Length))} else {'Unable to Identify'}
 
+	$isWifi = $adapter -match "Wi-Fi|Wireless"
+
 	# Cycle through ARP table to populate initial ListView data and start async lookups
 	$totalItems = ($arpOutput.Count - 1)
-
-	$hostnameTasks = @{}
-	$vendorTasks = @{}
 
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
@@ -172,19 +170,73 @@ function List-Machines {
 		$name = if ($ip -eq $internalIP) {"$hostName (This Device)"} else {"Resolving..."}
 		$vendor = if ($ip -eq $internalIP) {$myVendor} else {"Identifying..."}
 
+		# Determine if the IP was pingable
+		$pingResult = $ip -in $global:successfulPings
+		$pingImage = if ($pingResult) {
+			if ($isWifi) {
+				$listIcons['pingTrueIconWifi']
+			} else {
+				$listIcons['pingTrueIcon']
+			}
+		} else {
+			if ($isWifi) {
+				$listIcons['pingFalseIconWifi']
+			} else {
+				$listIcons['pingFalseIcon']
+			}
+		}
+
 		# Format and display
 		$lastOctet = [int]($ip -split '\.')[-1]
 		if ($myLastOctet -gt $lastOctet) {
-				# Add item with initial placeholder for hostname and vendor
-				$item = [pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}
-				$listView.Items.Add($item)
+			$item = [pscustomobject]@{
+				'MACaddress' = $mac;
+				'Vendor' = $vendor;
+				'IPaddress' = $ip;
+				'HostName' = $name;
+				'Ping' = $pingResult
+				'PingImage' = $pingImage
+			}
+			$listView.Items.Add($item)
 		} else {
 			if ($self -ge 1) {
-				$item = [pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}
+				$item = [pscustomobject]@{
+					'MACaddress' = $mac;
+					'Vendor' = $vendor;
+					'IPaddress' = $ip;
+					'HostName' = $name;
+					'Ping' = $pingResult
+					'PingImage' = $pingImage
+				}
 				$listView.Items.Add($item)
 			} else {
-				$listView.Items.Add([pscustomobject]@{'MACaddress'="$myMac";'Vendor'="$myVendor";'IPaddress'="$internalIP";'HostName'="$hostName (This Device)"})
-				$item = [pscustomobject]@{'MACaddress'="$mac";'Vendor'="$vendor";'IPaddress'="$ip";'HostName'="$name"}
+				if($isWifi){
+					$listView.Items.Add([pscustomobject]@{
+						'MACaddress' = $myMac;
+						'Vendor' = $myVendor;
+						'IPaddress' = $internalIP;
+						'HostName' = "$hostName (This Device)";
+						'Ping' = $true
+						'PingImage' = $listIcons['pingTrueIconWifi']
+					})
+				} else {
+					$listView.Items.Add([pscustomobject]@{
+						'MACaddress' = $myMac;
+						'Vendor' = $myVendor;
+						'IPaddress' = $internalIP;
+						'HostName' = "$hostName (This Device)";
+						'Ping' = $true
+						'PingImage' = $listIcons['pingTrueIcon']
+					})
+				}
+				$item = [pscustomobject]@{
+					'MACaddress' = $mac;
+					'Vendor' = $vendor;
+					'IPaddress' = $ip;
+					'HostName' = $name;
+					'Ping' = $pingResult
+					'PingImage' = $pingImage
+				}
 				$listView.Items.Add($item)
 				$self++
 			}
@@ -192,7 +244,7 @@ function List-Machines {
 	}
 	$listView.Items.Refresh()
 	if ($totalItems -ge 19) {
-		$hostNameColumn.Width = 300
+		$hostNameColumn.Width = 270
 	}
 	Update-uiMain
 }
@@ -395,8 +447,8 @@ function CheckConnectivity {
 	param (
 		[string]$selectedhost
 	)
+	# Disable all buttons for 'This Device'
 	if ($selectedhost -match ' (This Device)') {
-		# Disable all buttons for 'This Device'
 		@('btnRDP', 'btnWebInterface', 'btnShare', 'btnNone') | ForEach-Object {
 			Get-Variable $_ -ValueOnly | ForEach-Object {
 				$_.IsEnabled = $false
@@ -408,7 +460,11 @@ function CheckConnectivity {
 		return
 	}
 	$global:tryToConnect = $selectedhost -replace ' (This Device)', ''
-	$noConnectionsLabel.Text = 'No Connections Found'
+
+	# Find the item in ListView based on IP or HostName
+	$selectedItem = $listView.Items | Where-Object {
+		$_.IPaddress -eq $tryToConnect -or $_.HostName -eq $selectedhost
+	} | Select-Object -First 1
 
 	# Check connectivity for different protocols
 	$ports = @{
@@ -446,9 +502,18 @@ function CheckConnectivity {
 		$btnNone.IsEnabled = $false
 		$btnNone.Visibility = 'Collapsed'
 	}
+
+	# Show ping response status in popup window
+	if ($selectedItem) {
+		# Determine which icon to use based on connection type
+		if ($adapter -match "Wi-Fi|Wireless") {
+			$pingStatusImage.Source = if ($selectedItem.Ping) { $listIcons["pingTrueIconWifi"] } else { $listIcons["pingFalseIconWifi"] }
+		} else {
+			$pingStatusImage.Source = if ($selectedItem.Ping) { $listIcons["pingTrueIcon"] } else { $listIcons["pingFalseIcon"] }
+		}
+		$pingStatusText.Text = if ($selectedItem.Ping) { "Response received" } else { "No response received" }
+	}
 }
-
-
 
 # Listview column sort logic
 $sortDirections = @{}
@@ -717,9 +782,18 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					<ListView.View>
 						<GridView>
 							<GridViewColumn Header="MAC Address" DisplayMemberBinding="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-							<GridViewColumn Header="Vendor" DisplayMemberBinding="{Binding Vendor}" Width="250" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-							<GridViewColumn Header="IP Address" DisplayMemberBinding="{Binding IPaddress}" Width="140" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-							<GridViewColumn Header="Host Name" DisplayMemberBinding="{Binding HostName}" Width="314" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+							<GridViewColumn Header="Vendor" DisplayMemberBinding="{Binding Vendor}" Width="230" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+							<GridViewColumn Header="IP Address" Width="190" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}">
+								<GridViewColumn.CellTemplate>
+									<DataTemplate>
+										<StackPanel Orientation="Horizontal">
+											<Image Source="{Binding PingImage}" Width="16" Height="16" Margin="0,0,10,0"/>
+											<TextBlock Text="{Binding IPaddress}"/>
+										</StackPanel>
+									</DataTemplate>
+								</GridViewColumn.CellTemplate>
+							</GridViewColumn>
+							<GridViewColumn Header="Host Name" DisplayMemberBinding="{Binding HostName}" Width="284" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
 						</GridView>
 					</ListView.View>
 					<ListView.ContextMenu>
@@ -742,6 +816,12 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								<RowDefinition Height="Auto"/>
 								<RowDefinition Height="*"/>
 							</Grid.RowDefinitions>
+							<StackPanel Margin="10" Grid.Row="0">
+								<StackPanel Orientation="Horizontal">
+									<Image Name="pingStatusImage" Width="16" Height="16" Margin="15,10,10,0"/>
+									<TextBlock Name="pingStatusText" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Center" Margin="0,9,0,0"/>
+								</StackPanel>
+							</StackPanel>
 							<StackPanel Margin="10" Grid.Row="1">
 								<TextBlock Name="pHost" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Margin="15,0,0,0"/>
 								<TextBlock Name="pIP" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
@@ -963,10 +1043,15 @@ $icons = @(
 	@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ElementName = "btnRDP"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"},
-	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"}
+	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"},
+	@{File = 'C:\Windows\System32\pnidui.dll'; Index = 12; ElementName = "pingTrueIcon"; Type = "ListIcon"},
+	@{File = 'C:\Windows\System32\pnidui.dll'; Index = 13; ElementName = "pingFalseIcon"; Type = "ListIcon"},
+	@{File = 'C:\Windows\System32\pnidui.dll'; Index = 5; ElementName = "pingTrueIconWifi"; Type = "ListIcon"},
+	@{File = 'C:\Windows\System32\pnidui.dll'; Index = 11; ElementName = "pingFalseIconWifi"; Type = "ListIcon"}
 )
 
 # Extract and set icons
+$listIcons = @{}
 foreach ($icon in $icons) {
 	$extractedIcon = [System.IconExtractor]::Extract($icon.File, $icon.Index, $true)
 	if ($extractedIcon) {
@@ -993,6 +1078,9 @@ foreach ($icon in $icons) {
 				}
 				$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 				$element.Content = $image
+			}
+			"ListIcon" {
+				$listIcons[$icon.ElementName] = $bitmapSource
 			}
 		}
 	}
@@ -1394,11 +1482,12 @@ $Scan.Add_Click({
 		$BarText.Text = 'Getting localHost Info'
 		$listView.Items.Clear()
 		$ExportContext.IsEnabled = $false
-		$hostNameColumn.Width = 314
+		$hostNameColumn.Width = 284
 		Update-uiMain
 		Get-HostInfo
 		$externalIPt.Text = "`- `[ External IP: $externalIP `]"
 		$domainName.Text = "`- `[ Domain: $domain `]"
+		$BarText.Text = 'Preparing Scan'		
 		Update-uiMain
 		Scan-Subnet
 		waitForResponses
