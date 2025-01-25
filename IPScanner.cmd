@@ -237,7 +237,7 @@ $RunspacePool.Open()
 # Background Vendor lookup
 function processVendors {
 	$vendorLookupThread = [powershell]::Create().AddScript({
-		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac)
+		param ($Main, $listView, $internalIP)
 
 		function Update-uiBackground{
 			param($action)
@@ -323,7 +323,7 @@ function processVendors {
 		# Clean up jobs
 		Remove-Job -Job $vendorTasks.Values -Force
 
-	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac)
+	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($internalIP)
 	$vendorLookupThread.RunspacePool = $RunspacePool
 	$vendorScan = $vendorLookupThread.BeginInvoke()
 }
@@ -331,7 +331,7 @@ function processVendors {
 # Process Hostnames
 function processHostnames {
 	$hostnameLookupThread = [powershell]::Create().AddScript({
-		param ($Main, $listView, $Progress, $BarText, $Scan, $hostName, $gateway, $gatewayPrefix, $internalIP, $myMac)
+		param ($Main, $listView, $internalIP)
 
 		function Update-uiBackground{
 			param($action)
@@ -407,7 +407,7 @@ function processHostnames {
 		# Clean up jobs
 		Remove-Job -Job $hostnameTasks.Values -Force
 
-	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($Progress).AddArgument($BarText).AddArgument($Scan).AddArgument($hostName).AddArgument($gateway).AddArgument($gatewayPrefix).AddArgument($internalIP).AddArgument($myMac)
+	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($internalIP)
 	$hostnameLookupThread.RunspacePool = $RunspacePool
 	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
