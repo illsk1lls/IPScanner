@@ -94,9 +94,9 @@ function Get-HostInfo {
 
 	# Get domain
 	$global:domain = (Get-CimInstance -ClassName Win32_ComputerSystem).Domain
-	
-	$global:arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
 
+	# Init ARP cache data
+	$global:arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
 
 	# Mark empty as unknown
 	foreach ($item in 'hostName', 'externalIP', 'internalIP', 'gateway', 'domain') {
@@ -130,10 +130,8 @@ function List-Machines {
 	Update-Progress 0 'Identifying Devices'
 
 	# Convert IP Addresses from string to int by each section
-	$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
+	$arpOutput = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
 
-	# Sort by IP using [version] sorting
-	$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
 	$self = 0
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
 
@@ -146,6 +144,7 @@ function List-Machines {
 	# Cycle through ARP table to populate initial ListView data and start async lookups
 	$totalItems = ($arpOutput.Count - 1)
 
+	# First, add all known ARP entries
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
 		$mac = $line.LinkLayerAddress.Replace('-',':')
@@ -202,7 +201,27 @@ function List-Machines {
 			}
 		}
 	}
+
+	# Now add entries for successful pings not in ARP data, excluding the internal IP
+	$successfulPingsNotInARP = $global:successfulPings | Where-Object { $_ -notin $arpOutput.IPAddress -and $_ -ne $internalIP }
+	foreach ($ip in $successfulPingsNotInARP) {
+		$item = [pscustomobject]@{
+			'MACaddress' = 'No ARP Data';
+			'Vendor' = 'Unknown';
+			'IPaddress' = $ip;
+			'HostName' = 'Resolving...';
+			'Ping' = $true;
+			'PingImage' = Create-GradientEllipse -isPingSuccessful $true
+		}
+		$listView.Items.Add($item)
+	}
+
+	# Sort ListView items by IP address in ascending order
+	$sortedItems = $listView.Items | Sort-Object -Property {[version]$_.IPaddress}
+	$listView.Items.Clear()
+	$sortedItems | ForEach-Object { $listView.Items.Add($_) }
 	$listView.Items.Refresh()
+
 	if ($totalItems -ge 19) {
 		$hostNameColumn.Width = 270
 	}
@@ -308,7 +327,6 @@ function processVendors {
 			}
 		}
 		$listView.Items.Refresh()
-
 
 		# Clean up jobs
 		Remove-Job -Job $vendorTasks.Values -Force
@@ -1005,8 +1023,6 @@ $windowTop = ($screen.Height - $Main.Height) / 2
 $Main.Left = $windowLeft
 $Main.Top = $windowTop
 
-# Event Handlers for Minimize and Close buttons
-
 $btnMinimize.Add_Click({
 	$Main.WindowState = [System.Windows.WindowState]::Minimized
 })
@@ -1238,6 +1254,7 @@ $ExportToText.Add_Click({
 	if ($saveFileDialog.ShowDialog() -eq "OK") {
 		$path = $saveFileDialog.FileName
 		try {
+			# TXT header
 			$textContent = @"
 NETWORK SCAN RESULTS
 
@@ -1487,7 +1504,7 @@ $Scan.Add_Click({
 		Get-HostInfo
 		$externalIPt.Text = "`- `[ External IP: $externalIP `]"
 		$domainName.Text = "`- `[ Domain: $domain `]"
-		$BarText.Text = 'Preparing Scan'
+		$BarText.Text = 'Scanning'
 		Update-uiMain
 		Scan-Subnet
 		List-Machines
