@@ -715,6 +715,106 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 				</Trigger>
 			</Style.Triggers>
 		</Style>
+		<Style x:Key="CustomContextMenuStyle" TargetType="{x:Type ContextMenu}">
+			<Setter Property="Background" Value="#666666"/>
+			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Setter Property="BorderBrush" Value="#333333"/>
+			<Setter Property="BorderThickness" Value="0,0,2,0"/>
+			<Setter Property="OverridesDefaultStyle" Value="True"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type ContextMenu}">
+						<Border CornerRadius="2,4,4,2" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+							<StackPanel>
+								<ItemsPresenter/>
+							</StackPanel>
+						</Border>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+		<Style x:Key="CustomMenuItemStyle" TargetType="{x:Type MenuItem}">
+			<Setter Property="Background" Value="#666666"/>
+			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type MenuItem}">
+						<Border x:Name="Border" BorderThickness="0.70" CornerRadius="2,4,4,4" Background="Transparent" SnapsToDevicePixels="True" Padding="12,3,12,3">
+							<Grid>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="Auto"/>
+									<ColumnDefinition Width="Auto"/>
+								</Grid.ColumnDefinitions>
+								<ContentPresenter Margin="1" ContentSource="Header" RecognizesAccessKey="True" Grid.Column="0"/>
+								<Popup x:Name="PART_Popup" Placement="Right" VerticalOffset="-5" HorizontalOffset="5" AllowsTransparency="True" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" PopupAnimation="Fade">
+									<Border x:Name="SubMenuBorder" CornerRadius="2,4,4,4" SnapsToDevicePixels="True" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="0.70">
+										<StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+									</Border>
+								</Popup>
+							</Grid>
+						</Border>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsHighlighted" Value="true">
+								<Setter Property="Background" TargetName="Border" Value="#4000B7FF"/>
+								<Setter Property="BorderBrush" TargetName="Border" Value="#FF00BFFF"/>
+							</Trigger>
+							<Trigger Property="IsEnabled" Value="False">
+								<Setter Property="Foreground" Value="#888888"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+		<Style x:Key="MainMenuItemStyle" TargetType="{x:Type MenuItem}">
+			<Setter Property="Background" Value="#666666"/>
+			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type MenuItem}">
+						<Border x:Name="Border" BorderThickness="0.70" CornerRadius="2,4,4,4" Background="Transparent" SnapsToDevicePixels="True" Padding="12,3,12,3">
+							<Grid>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="Auto"/>
+									<ColumnDefinition Width="Auto"/>
+								</Grid.ColumnDefinitions>
+								<ContentPresenter Margin="1" ContentSource="Header" RecognizesAccessKey="True" Grid.Column="0"/>
+								<Path x:Name="BlackArrow" Data="M0 0 L5 2.5 L0 5 Z" Width="5" Height="5" Margin="7,2,0,0" Grid.Column="1">
+									<Path.Fill>
+										<SolidColorBrush Color="#EEEEEE"/>
+									</Path.Fill>
+								</Path>
+								<Path x:Name="GrayArrow" Data="M0 0 L5 2.5 L0 5 Z" Width="5" Height="5" Margin="7,2,0,0" Grid.Column="1">
+									<Path.Fill>
+										<SolidColorBrush Color="#888888"/>
+									</Path.Fill>
+								</Path>
+								<Popup x:Name="PART_Popup" Placement="Right" VerticalOffset="-5" HorizontalOffset="5" AllowsTransparency="True" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" PopupAnimation="Fade">
+									<Border x:Name="SubMenuBorder" CornerRadius="2,4,4,4" SnapsToDevicePixels="True" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="0.70">
+										<StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+									</Border>
+								</Popup>
+							</Grid>
+						</Border>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsHighlighted" Value="true">
+								<Setter Property="Background" TargetName="Border" Value="#555555"/>
+								<Setter Property="BorderBrush" TargetName="Border" Value="#FF00BFFF"/>
+							</Trigger>
+							<Trigger Property="IsEnabled" Value="False">
+								<Setter Property="Foreground" Value="#888888"/>
+								<Setter TargetName="BlackArrow" Property="Visibility" Value="Collapsed"/>
+								<Setter TargetName="GrayArrow" Property="Visibility" Value="Visible"/>
+							</Trigger>
+							<Trigger Property="IsEnabled" Value="True">
+								<Setter TargetName="BlackArrow" Property="Visibility" Value="Visible"/>
+								<Setter TargetName="GrayArrow" Property="Visibility" Value="Collapsed"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
 	</Window.Resources>
 	<Border Background="#222222" CornerRadius="5,5,5,5">
 		<Grid>
@@ -827,11 +927,11 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						</GridView>
 					</ListView.View>
 					<ListView.ContextMenu>
-						<ContextMenu>
-							<MenuItem Header="Export" Name="ExportContext">
-								<MenuItem Header="HTML" Name="ExportToHTML"/>
-								<MenuItem Header="CSV" Name="ExportToCSV"/>
-								<MenuItem Header="Text" Name="ExportToText"/>
+						<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
+							<MenuItem Header="    Export    " Name="ExportContext" Style="{StaticResource MainMenuItemStyle}">
+								<MenuItem Header="	 HTML   " Name="ExportToHTML" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="   CSV    " Name="ExportToCSV" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="   Text   " Name="ExportToText" Style="{StaticResource CustomMenuItemStyle}"/>
 							</MenuItem>
 						</ContextMenu>
 					</ListView.ContextMenu>
@@ -944,14 +1044,14 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						</Grid>
 					</Border>
 					<Canvas.ContextMenu>
-						<ContextMenu>
-							<MenuItem Header="Copy">
-								<MenuItem Header="IP Address" Name="PopupContextCopyIP"/>
-								<MenuItem Header="Hostname" Name="PopupContextCopyHostname"/>
-								<MenuItem Header="MAC Address" Name="PopupContextCopyMAC"/>
-								<MenuItem Header="Vendor" Name="PopupContextCopyVendor"/>
-								<Separator/>
-								<MenuItem Header="All" Name="PopupContextCopyAll"/>
+						<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
+							<MenuItem Header="    Copy    " Style="{StaticResource MainMenuItemStyle}">
+								<MenuItem Header="  IP Address   " Name="PopupContextCopyIP" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="  Hostname     " Name="PopupContextCopyHostname" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="  MAC Address  " Name="PopupContextCopyMAC" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="  Vendor       " Name="PopupContextCopyVendor" Style="{StaticResource CustomMenuItemStyle}"/>
+								<Separator Background="#111111"/>
+								<MenuItem Header="  All			 " Name="PopupContextCopyAll" Style="{StaticResource CustomMenuItemStyle}"/>
 							</MenuItem>
 						</ContextMenu>
 					</Canvas.ContextMenu>
