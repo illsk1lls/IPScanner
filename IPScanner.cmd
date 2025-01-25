@@ -244,17 +244,6 @@ function processVendors {
 			$Main.Dispatcher.Invoke([action]$action, [Windows.Threading.DispatcherPriority]::Background)
 		}
 
-		function Get-MacVendor($mac) {
-			try {
-				$ProgressPreference = 'SilentlyContinue'
-				$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
-				$ProgressPreference = 'Continue'
-				return $response
-			} catch {
-				return $null
-			}
-		}
-
 		$vendorTasks = @{}
 
 		# Process found devices
@@ -307,7 +296,9 @@ function processVendors {
 		# Check Vendor
 		if ($lastItem.Vendor -eq 'Identifying...' -or $lastItem.Vendor -eq 'Unable to Identify') {
 			# Manual vendor lookup for the last IP only if needed
-			$lastVendor = Get-MacVendor $lastMAC
+			$ProgressPreference = 'SilentlyContinue'
+			$lastVendor = (irm "https://www.macvendorlookup.com/api/v2/$($lastMAC.Replace(':','').Substring(0,6))" -Method Get)
+			$ProgressPreference = 'Continue'
 			$lastVendorResult = if ($lastVendor -and $lastVendor.Company) {
 				$lastVendor.Company.substring(0, [System.Math]::Min(35, $lastVendor.Company.Length))
 			} else {
@@ -315,19 +306,19 @@ function processVendors {
 			}
 			Update-uiBackground{
 				$lastItem.Vendor = $lastVendorResult
+				$listView.Items.Refresh()
 			}
 		}
 
 		# Update any leftover orphans
-
 		foreach ($item in $listView.Items) {
 			if ($item.Vendor -eq 'Identifying...') {
 				Update-uiBackground{
 					$item.Vendor = 'Unable to Identify'
+					$listView.Items.Refresh()
 				}
 			}
 		}
-		$listView.Items.Refresh()
 
 		# Clean up jobs
 		Remove-Job -Job $vendorTasks.Values -Force
@@ -347,7 +338,6 @@ function processHostnames {
 			$Main.Dispatcher.Invoke([action]$action, [Windows.Threading.DispatcherPriority]::Background)
 		}
 
-		$totalhostnamejobs = $listView.Items.Count
 		$hostnameTasks = @{}
 
 		# Process found devices
@@ -400,17 +390,18 @@ function processHostnames {
 			}
 			Update-uiBackground{
 				$lastItem.HostName = $lastHostName
+				$listView.Items.Refresh()
 			}
 		}
 
 		# Update any leftover orphans
-		Update-uiBackground{
-			foreach ($item in $listView.Items) {
-				if ($item.HostName -eq 'Resolving...') {
+		foreach ($item in $listView.Items) {
+			if ($item.HostName -eq 'Resolving...') {
+				Update-uiBackground{
 					$item.HostName = 'Unable to Resolve'
-				}
+					$listView.Items.Refresh()
+				}		
 			}
-			$listView.Items.Refresh()
 		}
 
 		# Clean up jobs
