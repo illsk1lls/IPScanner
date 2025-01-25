@@ -170,11 +170,7 @@ function List-Machines {
 
 		# Determine if the IP was pingable
 		$pingResult = $ip -in $global:successfulPings
-		$pingImage = if ($pingResult) {
-			$listIcons['pingTrueIcon']
-		} else {
-			$listIcons['pingFalseIcon']
-		}
+		$pingImage = Create-GradientEllipse -isPingSuccessful $pingResult
 
 		# Format and display
 		$lastOctet = [int]($ip -split '\.')[-1]
@@ -200,13 +196,14 @@ function List-Machines {
 				}
 				$listView.Items.Add($item)
 			} else {
+				$myPingTrueIcon = Create-GradientEllipse -isPingSuccessful $true
 				$listView.Items.Add([pscustomobject]@{
 					'MACaddress' = $myMac;
 					'Vendor' = $myVendor;
 					'IPaddress' = $internalIP;
 					'HostName' = "$hostName (This Device)";
 					'Ping' = $true
-					'PingImage' = $listIcons['pingTrueIcon']
+					'PingImage' = $myPingTrueIcon
 				})
 				$item = [pscustomobject]@{
 					'MACaddress' = $mac;
@@ -483,8 +480,8 @@ function CheckConnectivity {
 	}
 
 	# Show ping response status in popup window
-	$pingStatusImage.Source = if ($selectedItem.Ping) { $listIcons["pingTrueIcon"] } else { $listIcons["pingFalseIcon"] }
-	$pingStatusText.Text = if ($selectedItem.Ping) { "Response received" } else { "No response received" }
+	$pingStatusImage.Content = if ($selectedItem.Ping) { Create-GradientEllipse -isPingSuccessful $true -width 12 -height 12 } else { Create-GradientEllipse -isPingSuccessful $false -width 12 -height 12	}
+	$pingStatusText.Text = if ($selectedItem.Ping) { "ICMP response received" } else { "No ICMP response received" }
 }
 
 # Listview column sort logic
@@ -518,6 +515,61 @@ $listViewSortColumn = {
 	# Update ListView
 	$Sender.Items.Clear()
 	$sortedItems | ForEach-Object { $Sender.Items.Add($_) }
+}
+
+function Create-GradientEllipse {
+	param (
+		[bool]$isPingSuccessful,
+		[double]$width = 9,
+		[double]$height = 9
+	)
+
+	$ellipse = [Windows.Shapes.Ellipse]::new()
+	$ellipse.Width = $width
+	$ellipse.Height = $height
+
+	if ($isPingSuccessful) {
+		# Lighter blue gradient for successful ping
+		$gradient = New-Object System.Windows.Media.RadialGradientBrush
+		$gradient.GradientOrigin = New-Object System.Windows.Point(0.5, 0.5)
+		$gradient.Center = New-Object System.Windows.Point(0.5, 0.5)
+		$gradient.RadiusX = 0.5
+		$gradient.RadiusY = 0.5
+		$stop1 = New-Object System.Windows.Media.GradientStop
+		$stop1.Color = [System.Windows.Media.Color]::FromArgb(255, 51, 204, 255)
+		$stop1.Offset = 0
+		$gradient.GradientStops.Add($stop1)
+		$stop2 = New-Object System.Windows.Media.GradientStop
+		$stop2.Color = [System.Windows.Media.Color]::FromArgb(255, 25, 153, 204)
+		$stop2.Offset = 0.8
+		$gradient.GradientStops.Add($stop2)
+		$stop3 = New-Object System.Windows.Media.GradientStop
+		$stop3.Color = [System.Windows.Media.Color]::FromArgb(255, 0, 102, 153)
+		$stop3.Offset = 1
+		$gradient.GradientStops.Add($stop3)
+	} else {
+		# Shades of gray for unsuccessful ping
+		$gradient = New-Object System.Windows.Media.RadialGradientBrush
+		$gradient.GradientOrigin = New-Object System.Windows.Point(0.5, 0.5)
+		$gradient.Center = New-Object System.Windows.Point(0.5, 0.5)
+		$gradient.RadiusX = 0.5
+		$gradient.RadiusY = 0.5
+		$stop4 = New-Object System.Windows.Media.GradientStop
+		$stop4.Color = [System.Windows.Media.Color]::FromArgb(255, 220, 220, 220)
+		$stop4.Offset = 0
+		$gradient.GradientStops.Add($stop4)
+		$stop5 = New-Object System.Windows.Media.GradientStop
+		$stop5.Color = [System.Windows.Media.Color]::FromArgb(255, 160, 160, 160)
+		$stop5.Offset = 0.8
+		$gradient.GradientStops.Add($stop5)
+		$stop6 = New-Object System.Windows.Media.GradientStop
+		$stop6.Color = [System.Windows.Media.Color]::FromArgb(255, 100, 100, 100)
+		$stop6.Offset = 1
+		$gradient.GradientStops.Add($stop6)
+	}
+
+	$ellipse.Fill = $gradient
+	return $ellipse
 }
 
 # get icons from DLL or EXE files via shell32.dll function calls
@@ -759,7 +811,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								<GridViewColumn.CellTemplate>
 									<DataTemplate>
 										<StackPanel Orientation="Horizontal">
-											<Image Source="{Binding PingImage}" Width="16" Height="16" Margin="0,0,10,0"/>
+											<ContentControl Content="{Binding PingImage}" Width="16" Height="16" Margin="0,0,10,0"/>
 											<TextBlock Text="{Binding IPaddress}"/>
 										</StackPanel>
 									</DataTemplate>
@@ -790,8 +842,8 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 							</Grid.RowDefinitions>
 							<StackPanel Margin="10" Grid.Row="0">
 								<StackPanel Orientation="Horizontal">
-									<Image Name="pingStatusImage" Width="16" Height="16" Margin="15,10,10,0"/>
-									<TextBlock Name="pingStatusText" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Center" Margin="0,9,0,0"/>
+									<ContentControl Name="pingStatusImage" Width="12" Height="12" Margin="15,10,10,0"/>
+									<TextBlock Name="pingStatusText" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Center" Margin="0,8,0,0"/>
 								</StackPanel>
 							</StackPanel>
 							<StackPanel Margin="10" Grid.Row="1">
@@ -962,7 +1014,7 @@ $Main.Add_Loaded({
 	}, [Windows.Threading.DispatcherPriority]::Background)
 })
 
-# Center screen pragmatically
+# Center screen on viewable area pragmatically
 $screen = [System.Windows.SystemParameters]::WorkArea
 $windowLeft = ($screen.Width - $Main.Width) / 2
 $windowTop = ($screen.Height - $Main.Height) / 2
@@ -1015,13 +1067,10 @@ $icons = @(
 	@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ElementName = "btnRDP"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"},
-	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"},
-	@{File = 'C:\Windows\System32\netshell.dll'; Index = 65; ElementName = "pingTrueIcon"; Type = "ListIcon"},
-	@{File = 'C:\Windows\System32\netshell.dll'; Index = 68; ElementName = "pingFalseIcon"; Type = "ListIcon"}
+	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"}
 )
 
 # Extract and set icons
-$listIcons = @{}
 foreach ($icon in $icons) {
 	$extractedIcon = [System.IconExtractor]::Extract($icon.File, $icon.Index, $true)
 	if ($extractedIcon) {
@@ -1048,9 +1097,6 @@ foreach ($icon in $icons) {
 				}
 				$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 				$element.Content = $image
-			}
-			"ListIcon" {
-				$listIcons[$icon.ElementName] = $bitmapSource
 			}
 		}
 	}
@@ -1457,7 +1503,7 @@ $Scan.Add_Click({
 		Get-HostInfo
 		$externalIPt.Text = "`- `[ External IP: $externalIP `]"
 		$domainName.Text = "`- `[ Domain: $domain `]"
-		$BarText.Text = 'Preparing Scan'		
+		$BarText.Text = 'Preparing Scan'
 		Update-uiMain
 		Scan-Subnet
 		waitForResponses
