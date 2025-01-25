@@ -400,7 +400,7 @@ function processHostnames {
 				Update-uiBackground{
 					$item.HostName = 'Unable to Resolve'
 					$listView.Items.Refresh()
-				}		
+				}
 			}
 		}
 
@@ -646,37 +646,6 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 				</Trigger>
 			</ControlTemplate.Triggers>
 		</ControlTemplate>
-		<Style x:Key="ListViewStyle" TargetType="{x:Type ListViewItem}">
-			<Setter Property="Background" Value="#111111"/>
-			<Setter Property="Foreground" Value="#EEEEEE"/>
-			<Setter Property="FontWeight" Value="Normal"/>
-			<Setter Property="BorderThickness" Value="0.70"/>
-			<Style.Triggers>
-				<Trigger Property="ItemsControl.AlternationIndex" Value="0">
-					<Setter Property="Background" Value="#111111"/>
-					<Setter Property="Foreground" Value="#EEEEEE"/>
-				</Trigger>
-				<Trigger Property="ItemsControl.AlternationIndex" Value="1">
-					<Setter Property="Background" Value="#000000"/>
-					<Setter Property="Foreground" Value="#EEEEEE"/>
-				</Trigger>
-				<Trigger Property="IsMouseOver" Value="True">
-					<Setter Property="Background" Value="#4000B7FF"/>
-					<Setter Property="Foreground" Value="#EEEEEE"/>
-					<Setter Property="BorderBrush" Value="#FF00BFFF"/>
-				</Trigger>
-				<MultiTrigger>
-					<MultiTrigger.Conditions>
-						<Condition Property="IsSelected" Value="true"/>
-						<Condition Property="Selector.IsSelectionActive" Value="true"/>
-					</MultiTrigger.Conditions>
-					<Setter Property="Background" Value="#4000B7FF"/>
-					<Setter Property="Foreground" Value="{x:Static SystemColors.ControlBrush}"/>
-					<Setter Property="FontWeight" Value="Bold"/>
-					<Setter Property="BorderBrush" Value="#FF00BFFF"/>
-				</MultiTrigger>
-			</Style.Triggers>
-		</Style>
 		<Style x:Key="ScrollThumbs" TargetType="{x:Type Thumb}">
 			<Setter Property="Template">
 				<Setter.Value>
@@ -796,7 +765,49 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					<ProgressBar Name="Progress" Foreground="#FF00BFFF" Background="#777777" Value="0" Maximum="100" Width="777" Height="30" Visibility="Collapsed"/>
 					<TextBlock Name="BarText" Foreground="#000000" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 				</Grid>
-				<ListView Name="listView" Background="#333333" FontWeight="Bold" HorizontalAlignment="Left" Height="400" Margin="19,52,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False" AlternationCount="2" ItemContainerStyle="{StaticResource ListViewStyle}">
+				<ListView Name="listView" Background="#333333" FontWeight="Normal" HorizontalAlignment="Left" Height="400" Margin="19,52,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False" AlternationCount="2">
+					<ListView.ItemContainerStyle>
+						<Style TargetType="{x:Type ListViewItem}">
+							<Setter Property="Background" Value="Transparent" />
+							<Setter Property="Foreground" Value="#EEEEEE"/>
+							<Setter Property="BorderBrush" Value="Transparent"/>
+							<Setter Property="BorderThickness" Value="0.70"/>
+							<Setter Property="Template">
+								<Setter.Value>
+									<ControlTemplate TargetType="{x:Type ListViewItem}">
+										<Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}">
+											<GridViewRowPresenter HorizontalAlignment="Stretch" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Width="Auto" Margin="0" Content="{TemplateBinding Content}"/>
+										</Border>
+										<ControlTemplate.Triggers>
+											<Trigger Property="ItemsControl.AlternationIndex" Value="0">
+												<Setter Property="Background" Value="#111111"/>
+												<Setter Property="Foreground" Value="#EEEEEE"/>
+											</Trigger>
+											<Trigger Property="ItemsControl.AlternationIndex" Value="1">
+												<Setter Property="Background" Value="#000000"/>
+												<Setter Property="Foreground" Value="#EEEEEE"/>
+											</Trigger>
+											<Trigger Property="IsMouseOver" Value="True">
+												<Setter Property="Background" Value="#4000B7FF"/>
+												<Setter Property="Foreground" Value="#EEEEEE"/>
+												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+											</Trigger>
+											<MultiTrigger>
+												<MultiTrigger.Conditions>
+													<Condition Property="IsSelected" Value="true"/>
+													<Condition Property="Selector.IsSelectionActive" Value="true"/>
+												</MultiTrigger.Conditions>
+												<Setter Property="Background" Value="#4000B7FF"/>
+												<Setter Property="Foreground" Value="#EEEEEE"/>
+												<Setter Property="FontWeight" Value="Bold"/>
+												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+											</MultiTrigger>
+										</ControlTemplate.Triggers>
+									</ControlTemplate>
+								</Setter.Value>
+							</Setter>
+						</Style>
+					</ListView.ItemContainerStyle>
 					<ListView.View>
 						<GridView>
 							<GridViewColumn Header="MAC Address" DisplayMemberBinding="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
