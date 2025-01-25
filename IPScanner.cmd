@@ -706,6 +706,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 			<Setter Property="BorderBrush" Value="#333333" />
 			<Setter Property="BorderThickness" Value="0,0,2,0" />
 			<Setter Property="Cursor" Value="Arrow" />
+			<Setter Property="FontWeight" Value="Bold"/>
 			<Style.Triggers>
 				<Trigger Property="IsMouseOver" Value="True">
 					<Setter Property="Background" Value="#EEEEEE" />
