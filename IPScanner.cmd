@@ -118,7 +118,7 @@ function Scan-Subnet {
 	Test-Connection -ComputerName $pingAll -Count 1 -AsJob | Out-Null
 	Get-Job | Wait-Job -ErrorAction Stop | Out-Null
 	$results = Get-Job | Receive-Job -ErrorAction Stop
-	$global:successfulPings = $results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address
+	$global:successfulPings = @($results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address)
 	Get-Job | Remove-Job -Force
 }
 
