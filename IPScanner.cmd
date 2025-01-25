@@ -54,7 +54,7 @@ function Update-uiMain(){
 
 # Get Host Info
 function Get-HostInfo {
-	Update-Progress 0 'Getting localHost Info'
+	Update-Progress 0 'Scanning'
 	# Get Hostname
 	$global:hostName = [System.Net.Dns]::GetHostName()
 
@@ -105,7 +105,6 @@ function Get-HostInfo {
 			$global:item = 'Unknown'
 		}
 	}
-	Update-Progress 0 'Scanning'
 }
 
 function Update-Progress {
