@@ -1498,7 +1498,7 @@ $Scan.Add_Click({
 		$Scan.Visibility = 'Collapsed'
 		$Progress.Visibility = 'Visible'
 		$Progress.Value = 0
-		$BarText.Text = ''
+		$BarText.Text = 'Initializing'
 		$listView.Items.Clear()
 		$ExportContext.IsEnabled = $false
 		$hostNameColumn.Width = 284
