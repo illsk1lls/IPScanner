@@ -54,6 +54,7 @@ function Update-uiMain(){
 
 # Get Host Info
 function Get-HostInfo {
+	Update-Progress 0 'Getting localHost Info'
 	# Get Hostname
 	$global:hostName = [System.Net.Dns]::GetHostName()
 
@@ -104,6 +105,7 @@ function Get-HostInfo {
 			$global:item = 'Unknown'
 		}
 	}
+	Update-Progress 0 'Scanning'
 }
 
 function Update-Progress {
@@ -1400,7 +1402,7 @@ $Main.Add_KeyDown({
 	if ($_.Key -eq 'LeftCtrl' -or $_.Key -eq 'RightCtrl') {
 		$global:CtrlIsDown = $true
 		if($Scan.IsEnabled){
-			$scanButtonText.Text = 'Clear Cached Peer List'
+			$scanButtonText.Text = 'Clear ARP cache'
 			$scanAdminIcon.Visibility = 'Visible'
 		}
 	}
@@ -1496,7 +1498,7 @@ $Scan.Add_Click({
 		$Scan.Visibility = 'Collapsed'
 		$Progress.Visibility = 'Visible'
 		$Progress.Value = 0
-		$BarText.Text = 'Getting localHost Info'
+		$BarText.Text = ''
 		$listView.Items.Clear()
 		$ExportContext.IsEnabled = $false
 		$hostNameColumn.Width = 284
@@ -1504,7 +1506,6 @@ $Scan.Add_Click({
 		Get-HostInfo
 		$externalIPt.Text = "`- `[ External IP: $externalIP `]"
 		$domainName.Text = "`- `[ Domain: $domain `]"
-		$BarText.Text = 'Scanning'
 		Update-uiMain
 		Scan-Subnet
 		List-Machines
