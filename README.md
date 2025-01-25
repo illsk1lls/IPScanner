@@ -9,9 +9,15 @@ For use with basic networks to get an up to date list of client: MAC Address, Ve
 
 External IP Address and Domain are also displayed in the titlebar after initiating a scan<br>
 
-Double-clicking a listed item will give you a popup showing available connection options to that device.  Clickable buttons will appear for available options. <br>
+Double-clicking a listed item will give you a pop-up showing available connection options to that device.  Clickable buttons will appear for available options. Right clicking the pop-up will produce CopyToClipboard options.<br>
 
-Right-Click anywhere in the ListView window for Export options of the current list.
+<p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/CopyItemToClip.png?raw=true"></p>
+
+Right-Click anywhere in the ListView window for Export options of the current list. (HTML example export shown)
+
+<p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ContextMenuExport.png?raw=true"></p>
+
+<p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/HTMLexample-export.png?raw=true"></p>
 
 **If you wish to clear your cached list of network peers (ARP Cache) prior to scanning the network, hold the \[CTRL\] key while clicking the Scan button<br>**
 **(Note: Clearing network peer cache requires Admin rights, while normal scanning/usage does not. A UAC prompt will be produced for this action if needed.)**
