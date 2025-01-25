@@ -94,6 +94,9 @@ function Get-HostInfo {
 
 	# Get domain
 	$global:domain = (Get-CimInstance -ClassName Win32_ComputerSystem).Domain
+	
+	$global:arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
+
 
 	# Mark empty as unknown
 	foreach ($item in 'hostName', 'externalIP', 'internalIP', 'gateway', 'domain') {
@@ -113,7 +116,7 @@ function Update-Progress {
 # Send packets across subnet
 function Scan-Subnet {
 	$pingAll = 1..254 | ForEach-Object {
-		"192.168.1.$_"
+		"$global:gatewayPrefix$_"
 	}
 	Test-Connection -ComputerName $pingAll -Count 1 -AsJob | Out-Null
 	Get-Job | Wait-Job -ErrorAction Stop | Out-Null
@@ -122,28 +125,9 @@ function Scan-Subnet {
 	Get-Job | Remove-Job -Force
 }
 
-# Wait and listen to peers
-function waitForResponses {
-	Update-Progress 0 'Scanning'
-	1..100 | ForEach-Object {
-		Update-Progress $_ 'Scanning'
-		Start-Sleep -Milliseconds 75
-	}
-	Update-Progress 100 'Scanning'
-}
-
 # Create peer list
 function List-Machines {
 	Update-Progress 0 'Identifying Devices'
-
-	if($arpInit){
-		$arpInit.Clear()
-		$arpConverted.Clear()
-		$arpOutput.Clear()
-	}
-
-	# Filter for Reachable or Stale states and select only IP and MAC address
-	$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
 
 	# Convert IP Addresses from string to int by each section
 	$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
@@ -1506,7 +1490,6 @@ $Scan.Add_Click({
 		$BarText.Text = 'Preparing Scan'
 		Update-uiMain
 		Scan-Subnet
-		waitForResponses
 		List-Machines
 		processVendors
 		processHostnames
