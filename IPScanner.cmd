@@ -1181,6 +1181,14 @@ $Main.Add_Closing({
 	Get-Job | Remove-Job -Force
 	# Clean up RunspacePool if it exists
 	if ($RunspacePool) {
+		if ($hostnameLookupThread) {
+			$hostnameLookupThread.Close()
+			$hostnameLookupThread.Dispose()
+		}
+		if ($vendorLookupThread) {
+			$vendorLookupThread.Close()
+			$vendorLookupThread.Dispose()
+		}
 		try {
 			$RunspacePool.Close()
 		}
@@ -1725,6 +1733,14 @@ $Scan.Add_Click({
 		TrackProgress
 		Get-Job | Remove-Job -Force
 		if ($RunspacePool) {
+			if ($hostnameLookupThread) {
+				$hostnameLookupThread.Close()
+				$hostnameLookupThread.Dispose()
+			}
+			if ($vendorLookupThread) {
+				$vendorLookupThread.Close()
+				$vendorLookupThread.Dispose()
+			}
 			$RunspacePool.Close()
 			$RunspacePool.Dispose()
 		}
