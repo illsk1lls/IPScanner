@@ -878,6 +878,70 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 				</Setter.Value>
 			</Setter>
 		</Style>
+		<Style x:Key="CustomComboBoxStyle" TargetType="{x:Type ComboBox}">
+			<Setter Property="Width" Value="50"/>
+			<Setter Property="Height" Value="25"/>
+			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Setter Property="Margin" Value="0,0,5,0"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type ComboBox}">
+						<Grid>
+							<ToggleButton Name="ToggleButton" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Background="#333333" Foreground="#EEEEEE" BorderThickness="0.85" BorderBrush="#FF00BFFF">
+								<TextBlock Text="{Binding SelectedItem, RelativeSource={RelativeSource TemplatedParent}}" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#EEEEEE" Margin="5,0,0,0"/>
+								<ToggleButton.Template>
+									<ControlTemplate TargetType="{x:Type ToggleButton}">
+										<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+											<ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+										</Border>
+										<ControlTemplate.Triggers>
+											<Trigger Property="IsMouseOver" Value="True">
+												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+											</Trigger>
+											<Trigger Property="IsChecked" Value="True">
+												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+											</Trigger>
+										</ControlTemplate.Triggers>
+									</ControlTemplate>
+								</ToggleButton.Template>
+							</ToggleButton>
+							<Popup IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide" Width="50">
+								<Border Name="DropDownBorder" BorderBrush="#CCCCCC" BorderThickness="0.80" Background="#444444">
+									<ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Hidden">
+										<StackPanel IsItemsHost="True">
+											<StackPanel.Resources>
+												<Style TargetType="{x:Type ComboBoxItem}">
+													<Setter Property="Foreground" Value="#EEEEEE"/>
+													<Setter Property="Background" Value="#444444"/>
+													<Setter Property="HorizontalContentAlignment" Value="Center"/>
+													<Style.Triggers>
+														<Trigger Property="IsHighlighted" Value="True">
+															<Setter Property="Background" Value="#555555"/>
+														</Trigger>
+														<Trigger Property="IsSelected" Value="True">
+															<Setter Property="Background" Value="#555555"/>
+														</Trigger>
+													</Style.Triggers>
+												</Style>
+											</StackPanel.Resources>
+										</StackPanel>
+									</ScrollViewer>
+								</Border>
+							</Popup>
+						</Grid>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="ToggleButton" Property="BorderBrush" Value="#EEEEEE"/>
+							</Trigger>
+							<Trigger Property="IsDropDownOpen" Value="True">
+								<Setter TargetName="DropDownBorder" Property="BorderBrush" Value="#FF00BFFF"/>
+								<Setter TargetName="ToggleButton" Property="BorderBrush" Value="#EEEEEE"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
 	</Window.Resources>
 	<Border Background="#222222" CornerRadius="5,5,5,5">
 		<Grid>
@@ -1149,9 +1213,9 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 							<StackPanel Name="SubnetInput" Grid.Row="1" Margin="10,60,10,0" Visibility="Collapsed">
 								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
 									<TextBlock Text="Subnet" FontSize="14" Foreground="#EEEEEE" Margin="0,2,5,5"/>
-									<ComboBox Name="SubnetIP1" Width="50" Height="25" Margin="0,0,5,0"/>
-									<ComboBox Name="SubnetIP2" Width="50" Height="25" Margin="0,0,5,0"/>
-									<ComboBox Name="SubnetIP3" Width="50" Height="25" Margin="0,0,5,0"/>
+									<ComboBox Name="subnetOctet1" Style="{StaticResource CustomComboBoxStyle}"/>
+									<ComboBox Name="subnetOctet2" Style="{StaticResource CustomComboBoxStyle}"/>
+									<ComboBox Name="subnetOctet3" Style="{StaticResource CustomComboBoxStyle}"/>
 									<TextBlock Text="1-254" FontSize="14" Foreground="#EEEEEE" Margin="0,2,0,0"/>
 								</StackPanel>
 								<Button Name="btnReset" Width="24" Height="24" ToolTip="Reset Subnet" Margin="0,12,0,0" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="True" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
@@ -1370,8 +1434,8 @@ foreach ($icon in $icons) {
 			"Button" {
 				$image = New-Object System.Windows.Controls.Image -Property @{
 					Source = $bitmapSource;
-					Width = if($icon.ElementName -eq "btnReset"){16} else {24};	 # Set width to 16 for btnReset
-					Height = if($icon.ElementName -eq "btnReset"){16} else {24}; # Set height to 16 for btnReset
+					Width = if($icon.ElementName -eq "btnReset"){16} else {24};
+					Height = if($icon.ElementName -eq "btnReset"){16} else {24};
 				}
 				$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 				$element.Content = $image
@@ -1380,7 +1444,7 @@ foreach ($icon in $icons) {
 	}
 }
 
-# Populate the ComboBoxes with numbers 0-255
+# Populate the ComboBoxes
 function Initialize-IPCombo {
 	param($comboBox)
 	for ($i = 0; $i -le 255; $i++) {
@@ -1389,43 +1453,32 @@ function Initialize-IPCombo {
 	$comboBox.SelectedIndex = 0
 }
 
-# Initialize Comboboxes for the subnet
-@('SubnetIP1', 'SubnetIP2', 'SubnetIP3') | ForEach-Object {
+# Initialize Comboboxes
+@('subnetOctet1', 'subnetOctet2', 'subnetOctet3') | ForEach-Object {
 	Initialize-IPCombo -comboBox ($Main.FindName($_))
 }
 
-if ($global:gateway) {
-	$parts = $global:gateway -split '\.'
-	if ($parts.Length -ge 3) {
-		$SubnetIP1.SelectedItem = [int]$parts[0]
-		$SubnetIP2.SelectedItem = [int]$parts[1]
-		$SubnetIP3.SelectedItem = [int]$parts[2]
-	} else {
-		$SubnetIP1.SelectedItem = 192
-		$SubnetIP2.SelectedItem = 168
-		$SubnetIP3.SelectedItem = 1
-	}
-} else {
-		$SubnetIP1.SelectedItem = 192
-		$SubnetIP2.SelectedItem = 168
-		$SubnetIP3.SelectedItem = 1
-}
-
 $ChangeSubnet.Add_Click({
+	$parts = $global:gatewayPrefix -split '\.'
+	if ($parts.Length -ge 3) {
+		$subnetOctet1.SelectedItem = [int]$parts[0]
+		$subnetOctet2.SelectedItem = [int]$parts[1]
+		$subnetOctet3.SelectedItem = [int]$parts[2]
+	} else {
+		$subnetOctet1.SelectedItem = 192
+		$subnetOctet2.SelectedItem = 168
+		$subnetOctet3.SelectedItem = 1
+	}
 	Show-Popup2 -Title "Segment Exploration" -IsSubnetPopup $true
-})
-
-$btnCancel2.Add_Click({
-	$PopupCanvas2.Visibility = 'Hidden'
 })
 
 $btnReset.Add_Click({
 	if ($originalGatewayPrefix) {
 		$parts = $originalGatewayPrefix -split '\.'
 		if ($parts.Length -ge 3) {
-			$SubnetIP1.SelectedItem = [int]$parts[0]
-			$SubnetIP2.SelectedItem = [int]$parts[1]
-			$SubnetIP3.SelectedItem = [int]$parts[2]
+			$subnetOctet1.SelectedItem = [int]$parts[0]
+			$subnetOctet2.SelectedItem = [int]$parts[1]
+			$subnetOctet3.SelectedItem = [int]$parts[2]
 			$global:gatewayPrefix = $originalGatewayPrefix
 		}
 	}
@@ -1441,9 +1494,15 @@ $btnReset.Add_MouseLeave({
 
 $btnOK2.Add_Click({
 	if ($SubnetInput.Visibility -eq 'Visible') {
-		$global:gatewayPrefix = "{0}.{1}.{2}." -f $SubnetIP1.SelectedItem, $SubnetIP2.SelectedItem, $SubnetIP3.SelectedItem
+		$global:gatewayPrefix = "{0}.{1}.{2}." -f $subnetOctet1.SelectedItem, $subnetOctet2.SelectedItem, $subnetOctet3.SelectedItem
+	}
+	if ($global:gatewayPrefix -ne $originalGatewayPrefix) {
+		$scanButtonText.Text = 'Custom Scan'
+	} else {
+		$scanButtonText.Text = 'Scan'
 	}
 	$PopupCanvas2.Visibility = 'Hidden'
+
 })
 
 $btnOK2.Add_MouseEnter({
@@ -1453,15 +1512,6 @@ $btnOK2.Add_MouseEnter({
 $btnOK2.Add_MouseLeave({
 	$btnOK2.Foreground='#EEEEEE'
 	$btnOK2.Background='#111111'
-})
-
-$btnCancel2.Add_MouseEnter({
-	$btnCancel2.Foreground='#000000'
-	$btnCancel2.Background='#CCCCCC'
-})
-$btnCancel2.Add_MouseLeave({
-	$btnCancel2.Foreground='#EEEEEE'
-	$btnCancel2.Background='#111111'
 })
 
 $btnRDP.Add_Click({
@@ -1751,7 +1801,11 @@ $Main.Add_KeyUp({
 	if ($_.Key -eq 'LeftCtrl' -or $_.Key -eq 'RightCtrl') {
 		$global:CtrlIsDown = $false
 		if($Scan.IsEnabled){
-			$scanButtonText.Text = 'Scan'
+			if ($global:gatewayPrefix -ne $originalGatewayPrefix) {
+				$scanButtonText.Text = 'Custom Scan'
+			} else {
+				$scanButtonText.Text = 'Scan'
+			}
 			$scanAdminIcon.Visibility = 'Collapsed'
 		}
 	}
@@ -1829,7 +1883,11 @@ $Scan.Add_Click({
 				Show-Popup2 -Message 'No action was taken...' -Title 'Process Aborted:'
 			}
 		}
-		$scanButtonText.Text = 'Scan'
+		if ($global:gatewayPrefix -ne $originalGatewayPrefix) {
+			$scanButtonText.Text = 'Custom Scan'
+		} else {
+			$scanButtonText.Text = 'Scan'
+		}
 		$scanAdminIcon.Visibility = 'Collapsed'
 		$Scan.IsEnabled = $true
 		$global:CtrlIsDown = $false
