@@ -9,7 +9,11 @@ For use with basic networks to get an up to date list of client: MAC Address, Ve
 
 External IP Address and Domain are also displayed in the titlebar after initiating a scan<br>
 
-Double-clicking a listed item will give you a pop-up showing available connection options to that device.  Clickable buttons will appear for available options. Right clicking the pop-up will produce CopyToClipboard options.<br>
+Double-clicking a listed item will give you a pop-up showing available connection options to that device.  
+
+<p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/DoubleClickPopup.png?raw=true"></p>
+
+Clickable buttons will appear for available options. Right clicking the pop-up will produce CopyToClipboard options.<br>
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/CopyItemToClip.png?raw=true"></p>
 

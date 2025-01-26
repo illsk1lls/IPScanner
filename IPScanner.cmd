@@ -52,61 +52,6 @@ function Update-uiMain(){
 	$Main.Dispatcher.Invoke([Windows.Threading.DispatcherPriority]::Background, [action]{})
 }
 
-# Get Host Info
-function Get-HostInfo {
-	Update-Progress 0 'Scanning'
-	# Get Hostname
-	$global:hostName = [System.Net.Dns]::GetHostName()
-
-	# Check internet connection and get external IP
-	$ProgressPreference = 'SilentlyContinue'
-	try {
-		$ncsiCheck = Invoke-RestMethod "http://www.msftncsi.com/ncsi.txt"
-		if ($ncsiCheck -eq "Microsoft NCSI") {
-			$global:externalIP = Invoke-RestMethod "http://ifconfig.me/ip"
-		} else {
-			$global:externalIP = "No Internet or Redirection"
-		}
-	} catch {
-		$global:externalIP = "No Internet or Error"
-	}
-	$ProgressPreference = 'Continue'
-
-	# Find gateway and internal IP
-	$route = Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1
-	$global:gateway = $route.NextHop
-	$gatewayParts = $global:gateway -split '\.'
-	$global:gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts[2])."
-
-	$global:internalIP = (Get-NetIPAddress | Where-Object {
-		$_.AddressFamily -eq 'IPv4' -and
-		$_.InterfaceAlias -ne 'Loopback Pseudo-Interface 1' -and
-		$_.IPAddress -like "$global:gatewayPrefix*"
-	}).IPAddress
-
-	# Get current adapter
-	$global:adapter = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
-		$_.InterfaceAlias -match 'Ethernet|Wi-Fi' -and
-		$_.IPAddress -like "$global:gatewayPrefix*"
-	}).InterfaceAlias
-
-	# Get MAC address
-	$global:myMac = (Get-NetAdapter -Name $global:adapter).MacAddress -replace '-', ':'
-
-	# Get domain
-	$global:domain = (Get-CimInstance -ClassName Win32_ComputerSystem).Domain
-
-	# Init ARP cache data
-	$global:arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
-
-	# Mark empty as unknown
-	foreach ($item in 'hostName', 'externalIP', 'internalIP', 'gateway', 'domain') {
-		if (-not $global:item) {
-			$global:item = 'Unknown'
-		}
-	}
-}
-
 function Update-Progress {
 	param ($value, $text)
 	$Progress.Value = $value
@@ -114,16 +59,121 @@ function Update-Progress {
 	Update-uiMain
 }
 
+# Initialize RunspacePool
+$SessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+$RunspacePool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $SessionState, $Host)
+$RunspacePool.Open()
+
+# Get Host Info
+function Get-HostInfo {
+	$getHostInfoScriptBlock = {
+		# Get Hostname
+		$hostName = [System.Net.Dns]::GetHostName()
+
+		# Check internet connection and get external IP
+		$ProgressPreference = 'SilentlyContinue'
+		try {
+			$ncsiCheck = Invoke-RestMethod "http://www.msftncsi.com/ncsi.txt"
+			if ($ncsiCheck -eq "Microsoft NCSI") {
+				$externalIP = Invoke-RestMethod "http://ifconfig.me/ip"
+			} else {
+				$externalIP = "No Internet or Redirection"
+			}
+		} catch {
+			$externalIP = "No Internet or Error"
+		}
+		$ProgressPreference = 'Continue'
+
+		# Find gateway and internal IP
+		$route = Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1
+		$gateway = $route.NextHop
+		$gatewayParts = $gateway -split '\.'
+		$gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts[2])."
+
+		$internalIP = (Get-NetIPAddress | Where-Object {
+			$_.AddressFamily -eq 'IPv4' -and
+			$_.InterfaceAlias -ne 'Loopback Pseudo-Interface 1' -and
+			$_.IPAddress -like "$gatewayPrefix*"
+		}).IPAddress
+
+		# Get current adapter
+		$adapter = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
+			$_.InterfaceAlias -match 'Ethernet|Wi-Fi' -and
+			$_.IPAddress -like "$gatewayPrefix*"
+		}).InterfaceAlias
+
+		# Get MAC address
+		$myMac = (Get-NetAdapter -Name $adapter).MacAddress -replace '-', ':'
+
+		# Get domain
+		$domain = (Get-CimInstance -ClassName Win32_ComputerSystem).Domain
+
+		# Init ARP cache data
+		$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
+
+		# Mark empty as unknown
+		$variables = @('hostName', 'externalIP', 'internalIP', 'gateway', 'domain')
+		foreach ($item in $variables) {
+			if (-not (Get-Variable -Name $item -ValueOnly)) {
+				Set-Variable -Name $item -Value 'Unknown'
+			}
+		}
+
+		return @{
+			'hostName' = $hostName;
+			'externalIP' = $externalIP;
+			'internalIP' = $internalIP;
+			'gateway' = $gateway;
+			'gatewayPrefix' = $gatewayPrefix;
+			'adapter' = $adapter;
+			'myMac' = $myMac;
+			'domain' = $domain;
+			'arpInit' = $arpInit
+		}
+	}
+	$getHostInfoThread = [powershell]::Create().AddScript($getHostInfoScriptBlock)
+	$getHostInfoThread.RunspacePool = $RunspacePool
+	$getHostInfoAsync = $getHostInfoThread.BeginInvoke()
+	$getHostInfoAsync.AsyncWaitHandle.WaitOne()
+	$hostInfoResults = $getHostInfoThread.EndInvoke($getHostInfoAsync)
+	$global:hostName = $hostInfoResults.hostName
+	$global:externalIP = $hostInfoResults.externalIP
+	$global:internalIP = $hostInfoResults.internalIP
+	$global:gateway = $hostInfoResults.gateway
+	$global:gatewayPrefix = $hostInfoResults.gatewayPrefix
+	$global:adapter = $hostInfoResults.adapter
+	$global:myMac = $hostInfoResults.myMac
+	$global:domain = $hostInfoResults.domain
+	$global:arpInit = $hostInfoResults.arpInit
+	Update-Progress 0 'Scanning'
+	$getHostInfoThread.Dispose()
+}
+
 # Send packets across subnet
 function Scan-Subnet {
-	$pingAll = 1..254 | ForEach-Object {
-		"$global:gatewayPrefix$_"
+	$scanSubnetScriptBlock = {
+		param (
+			[string]$gatewayPrefix
+		)
+
+		$pingAll = 1..254 | ForEach-Object {
+			"$gatewayPrefix$_"
+		}
+		Test-Connection -ComputerName $pingAll -Count 1 -AsJob | Out-Null
+		Get-Job | Wait-Job -ErrorAction Stop | Out-Null
+		$results = Get-Job | Receive-Job -ErrorAction Stop
+		$successfulPings = @($results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address)
+		Get-Job | Remove-Job -Force
+
+		return $successfulPings
 	}
-	Test-Connection -ComputerName $pingAll -Count 1 -AsJob | Out-Null
-	Get-Job | Wait-Job -ErrorAction Stop | Out-Null
-	$results = Get-Job | Receive-Job -ErrorAction Stop
-	$global:successfulPings = @($results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address)
-	Get-Job | Remove-Job -Force
+	$scanSubnetThread = [powershell]::Create().AddScript($scanSubnetScriptBlock)
+	$scanSubnetThread.RunspacePool = $RunspacePool
+	$scanSubnetThread.AddArgument($global:gatewayPrefix)
+	$scanSubnetAsync = $scanSubnetThread.BeginInvoke()
+	$scanSubnetAsync.AsyncWaitHandle.WaitOne()
+	$global:successfulPings = $scanSubnetThread.EndInvoke($scanSubnetAsync)
+	$scanSubnetThread.Dispose()
 }
 
 # Create peer list
@@ -228,11 +278,6 @@ function List-Machines {
 	}
 	Update-uiMain
 }
-
-# Initialize RunspacePool
-$SessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-$RunspacePool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $SessionState, $Host)
-$RunspacePool.Open()
 
 # Background Vendor lookup
 function processVendors {
@@ -1132,6 +1177,8 @@ $Main.Title = "$AppId"
 $titleBar.Text = "$AppId"
 
 $Main.Add_Closing({
+	# Force close any running jobs
+	Get-Job | Remove-Job -Force
 	# Clean up RunspacePool if it exists
 	if ($RunspacePool) {
 		try {
@@ -1233,7 +1280,7 @@ function Show-Popup2 {
 	)
 
 	$PopupText2.Text = $Message
-    $PopupTitle2.Text = $Title
+	$PopupTitle2.Text = $Title
 	$btnOK2.IsEnabled = $true
 
 	# Center the popup
@@ -1676,6 +1723,11 @@ $Scan.Add_Click({
 		processVendors
 		processHostnames
 		TrackProgress
+		Get-Job | Remove-Job -Force
+		if ($RunspacePool) {
+			$RunspacePool.Close()
+			$RunspacePool.Dispose()
+		}
 		# Hide ProgressBar, show button
 		$Progress.Visibility = 'Collapsed'
 		$Scan.Visibility = 'Visible'
