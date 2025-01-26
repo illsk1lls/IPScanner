@@ -59,6 +59,15 @@ function Update-Progress {
 	Update-uiMain
 }
 
+# Find gateway
+$route = Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1
+$global:gateway = $route.NextHop
+$gatewayParts = $global:gateway -split '\.'
+$global:gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts[2])."
+
+# Store the original gateway prefix for reset functionality
+$originalGatewayPrefix = $global:gatewayPrefix
+
 # Initialize RunspacePool
 $SessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
 $RunspacePool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $SessionState, $Host)
@@ -66,7 +75,17 @@ $RunspacePool.Open()
 
 # Get Host Info
 function Get-HostInfo {
+	param(
+		[string]$gateway,
+		[string]$gatewayPrefix,
+		[string]$originalGatewayPrefix
+	)
 	$getHostInfoScriptBlock = {
+		param(
+			[string]$gateway,
+			[string]$gatewayPrefix,
+			[string]$originalGatewayPrefix
+		)
 		# Get Hostname
 		$hostName = [System.Net.Dns]::GetHostName()
 
@@ -84,22 +103,17 @@ function Get-HostInfo {
 		}
 		$ProgressPreference = 'Continue'
 
-		# Find gateway and internal IP
-		$route = Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1
-		$gateway = $route.NextHop
-		$gatewayParts = $gateway -split '\.'
-		$gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts[2])."
-
+		# Use the passed gateway and gatewayPrefix
 		$internalIP = (Get-NetIPAddress | Where-Object {
 			$_.AddressFamily -eq 'IPv4' -and
 			$_.InterfaceAlias -ne 'Loopback Pseudo-Interface 1' -and
-			$_.IPAddress -like "$gatewayPrefix*"
+			$_.IPAddress -like "$originalGatewayPrefix*"
 		}).IPAddress
 
 		# Get current adapter
 		$adapter = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
 			$_.InterfaceAlias -match 'Ethernet|Wi-Fi' -and
-			$_.IPAddress -like "$gatewayPrefix*"
+			$_.IPAddress -like "$originalGatewayPrefix*"
 		}).InterfaceAlias
 
 		# Get MAC address
@@ -128,10 +142,14 @@ function Get-HostInfo {
 			'adapter' = $adapter;
 			'myMac' = $myMac;
 			'domain' = $domain;
-			'arpInit' = $arpInit
+			'arpInit' = $arpInit;
 		}
 	}
+
 	$getHostInfoThread = [powershell]::Create().AddScript($getHostInfoScriptBlock)
+	$getHostInfoThread.AddArgument($global:gateway)
+	$getHostInfoThread.AddArgument($global:gatewayPrefix)
+	$getHostInfoThread.AddArgument($originalGatewayPrefix)
 	$getHostInfoThread.RunspacePool = $RunspacePool
 	$getHostInfoAsync = $getHostInfoThread.BeginInvoke()
 	$getHostInfoAsync.AsyncWaitHandle.WaitOne()
@@ -898,6 +916,11 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 			<Grid Grid.Row="1" Margin="0,0,50,0">
 				<Grid Name="ScanContainer" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,11,0,0">
 					<Button Name="Scan" Width="777" Height="30" Background="#777777" Foreground="#000000" FontWeight="Bold" Template="{StaticResource NoMouseOverButtonTemplate}">
+						<Button.ContextMenu>
+							<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
+								<MenuItem Header="Subnet" Style="{StaticResource MainMenuItemStyle}" Name="ChangeSubnet"/>
+							</ContextMenu>
+						</Button.ContextMenu>
 						<Button.Content>
 							<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
 								<TextBlock Name="ScanButtonText" Text="Scan" Foreground="#000000" FontWeight="Bold" />
@@ -1091,18 +1114,18 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					<Canvas.ContextMenu>
 						<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
 							<MenuItem Header="    Copy    " Style="{StaticResource MainMenuItemStyle}">
-								<MenuItem Header="  IP Address   " Name="PopupContextCopyIP" Style="{StaticResource CustomMenuItemStyle}"/>
-								<MenuItem Header="  Hostname     " Name="PopupContextCopyHostname" Style="{StaticResource CustomMenuItemStyle}"/>
-								<MenuItem Header="  MAC Address  " Name="PopupContextCopyMAC" Style="{StaticResource CustomMenuItemStyle}"/>
-								<MenuItem Header="  Vendor       " Name="PopupContextCopyVendor" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="   IP Address  " Name="PopupContextCopyIP" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="   Hostname    " Name="PopupContextCopyHostname" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="   MAC Address " Name="PopupContextCopyMAC" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="   Vendor      " Name="PopupContextCopyVendor" Style="{StaticResource CustomMenuItemStyle}"/>
 								<Separator Background="#111111"/>
-								<MenuItem Header="  All          " Name="PopupContextCopyAll" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="   All         " Name="PopupContextCopyAll" Style="{StaticResource CustomMenuItemStyle}"/>
 							</MenuItem>
 						</ContextMenu>
 					</Canvas.ContextMenu>
 				</Canvas>
-				<Canvas Name="PopupCanvas2" Background="#222222" Visibility="Hidden" Width="330" Height="200" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
-					<Border Name="PopupBorder2" Width="330" Height="200" BorderThickness="0.70" CornerRadius="5" Background="#333333" Opacity="0.95">
+				<Canvas Name="PopupCanvas2" Background="#222222" Visibility="Hidden" Width="330" Height="220" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
+					<Border Name="PopupBorder2" Width="330" Height="220" BorderThickness="0.70" CornerRadius="5" Background="#333333" Opacity="0.95">
 						<Border.BorderBrush>
 							<SolidColorBrush Color="#CCCCCC"/>
 						</Border.BorderBrush>
@@ -1119,14 +1142,41 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								<RowDefinition Height="Auto"/>
 								<RowDefinition Height="*"/>
 								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="Auto"/>
 							</Grid.RowDefinitions>
-							<Grid.ColumnDefinitions>
-								<ColumnDefinition Width="*"/>
-							</Grid.ColumnDefinitions>
 							<TextBlock Name="PopupTitle2" HorizontalAlignment="Center" Margin="0,10,0,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Grid.Row="0"/>
-							<TextBlock Name="PopupText2" TextWrapping="Wrap" Margin="10,40,10,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Top" HorizontalAlignment="Center" Grid.Row="1"/>
-							<Button Name="pCloseButton2" Content="X" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" HorizontalAlignment="Right" Margin="0,5,5,5" Height="18" Width="22" Grid.Row="0" Grid.Column="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-							<StackPanel Name="ButtonStackPanel2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,0,0,25" Grid.Row="2">
+							<TextBlock Name="PopupText2" TextWrapping="Wrap" Margin="10,60,10,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Top" HorizontalAlignment="Center" Grid.Row="1" Visibility="Visible"/>
+							<StackPanel Name="SubnetInput" Grid.Row="1" Margin="10,60,10,0" Visibility="Collapsed">
+								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+									<TextBlock Text="Subnet" FontSize="14" Foreground="#EEEEEE" Margin="0,2,5,5"/>
+									<ComboBox Name="SubnetIP1" Width="50" Height="25" Margin="0,0,5,0"/>
+									<ComboBox Name="SubnetIP2" Width="50" Height="25" Margin="0,0,5,0"/>
+									<ComboBox Name="SubnetIP3" Width="50" Height="25" Margin="0,0,5,0"/>
+									<TextBlock Text="1-254" FontSize="14" Foreground="#EEEEEE" Margin="0,2,0,0"/>
+								</StackPanel>
+								<Button Name="btnReset" Width="24" Height="24" ToolTip="Reset Subnet" Margin="0,12,0,0" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="True" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+									<Button.Effect>
+										<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+									</Button.Effect>
+									<Button.Resources>
+										<Storyboard x:Key="mouseEnterAnimation">
+											<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-2" Duration="0:0:0.2"/>
+											<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="6" Duration="0:0:0.2"/>
+											<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="6" Duration="0:0:0.2"/>
+										</Storyboard>
+										<Storyboard x:Key="mouseLeaveAnimation">
+											<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+											<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="3" Duration="0:0:0.2"/>
+											<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="3" Duration="0:0:0.2"/>
+										</Storyboard>
+									</Button.Resources>
+									<Button.RenderTransform>
+										<TranslateTransform/>
+									</Button.RenderTransform>
+								</Button>
+							</StackPanel>
+							<Button Name="pCloseButton2" Content="X" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" HorizontalAlignment="Right" Margin="0,5,5,5" Height="18" Width="22" Grid.Row="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							<StackPanel Name="ButtonStackPanel2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,0,0,10" Grid.Row="2">
 								<Button Name="btnOK2" Content="OK" Margin="5,10,5,10" Background="#111111" Foreground="#EEEEEE" Width="75" Height="25" Template="{StaticResource NoMouseOverButtonTemplate}"/>
 							</StackPanel>
 						</Grid>
@@ -1203,7 +1253,7 @@ $Main.Add_Loaded({
 	}, [Windows.Threading.DispatcherPriority]::Background)
 })
 
-# Center screen on viewable area pragmatically
+# Center main window
 $screen = [System.Windows.SystemParameters]::WorkArea
 $windowLeft = ($screen.Width - $Main.Width) / 2
 $windowTop = ($screen.Height - $Main.Height) / 2
@@ -1258,32 +1308,27 @@ $pCloseButton2.Add_MouseLeave({
 	$pCloseButton2.Background='#111111'
 })
 
-$btnOK2.Add_Click({
-	$PopupCanvas2.Visibility = 'Hidden'
-})
-
-$btnOK2.Add_MouseEnter({
-	$btnOK2.Foreground='#000000'
-	$btnOK2.Background='#CCCCCC'
-})
-
-$btnOK2.Add_MouseLeave({
-	$btnOK2.Foreground='#EEEEEE'
-	$btnOK2.Background='#111111'
-})
-
 # Message popup
 function Show-Popup2 {
 	param (
 		[string]$Message,
-		[string]$Title = 'Info:'
+		[string]$Title = 'Info',
+		[bool]$IsSubnetPopup = $false
 	)
 
-	$PopupText2.Text = $Message
 	$PopupTitle2.Text = $Title
-	$btnOK2.IsEnabled = $true
+	$PopupText2.Text = $Message
 
-	# Center the popup
+	if ($IsSubnetPopup) {
+		$SubnetInput.Visibility = 'Visible'
+		$PopupText2.Visibility = 'Collapsed'
+		$btnOK2.Content = 'OK'
+	} else {
+		$SubnetInput.Visibility = 'Collapsed'
+		$PopupText2.Visibility = 'Visible'
+		$btnOK2.Content = 'OK'
+	}
+
 	$centerX = ($Main.ActualWidth - $PopupBorder2.ActualWidth) / 2
 	$centerY = ($Main.ActualHeight - $PopupBorder2.ActualHeight) / 2
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
@@ -1299,7 +1344,8 @@ $icons = @(
 	@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ElementName = "btnRDP"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"},
-	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"}
+	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"},
+	@{File = 'C:\Windows\System32\imageres.dll'; Index = 229; ElementName = "btnReset"; Type = "Button"}
 )
 
 # Extract and set icons
@@ -1324,8 +1370,8 @@ foreach ($icon in $icons) {
 			"Button" {
 				$image = New-Object System.Windows.Controls.Image -Property @{
 					Source = $bitmapSource;
-					Width = 24;
-					Height = 24
+					Width = if($icon.ElementName -eq "btnReset"){16} else {24};	 # Set width to 16 for btnReset
+					Height = if($icon.ElementName -eq "btnReset"){16} else {24}; # Set height to 16 for btnReset
 				}
 				$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 				$element.Content = $image
@@ -1333,6 +1379,90 @@ foreach ($icon in $icons) {
 		}
 	}
 }
+
+# Populate the ComboBoxes with numbers 0-255
+function Initialize-IPCombo {
+	param($comboBox)
+	for ($i = 0; $i -le 255; $i++) {
+		$comboBox.Items.Add($i)
+	}
+	$comboBox.SelectedIndex = 0
+}
+
+# Initialize Comboboxes for the subnet
+@('SubnetIP1', 'SubnetIP2', 'SubnetIP3') | ForEach-Object {
+	Initialize-IPCombo -comboBox ($Main.FindName($_))
+}
+
+if ($global:gateway) {
+	$parts = $global:gateway -split '\.'
+	if ($parts.Length -ge 3) {
+		$SubnetIP1.SelectedItem = [int]$parts[0]
+		$SubnetIP2.SelectedItem = [int]$parts[1]
+		$SubnetIP3.SelectedItem = [int]$parts[2]
+	} else {
+		$SubnetIP1.SelectedItem = 192
+		$SubnetIP2.SelectedItem = 168
+		$SubnetIP3.SelectedItem = 1
+	}
+} else {
+		$SubnetIP1.SelectedItem = 192
+		$SubnetIP2.SelectedItem = 168
+		$SubnetIP3.SelectedItem = 1
+}
+
+$ChangeSubnet.Add_Click({
+	Show-Popup2 -Title "Segment Exploration" -IsSubnetPopup $true
+})
+
+$btnCancel2.Add_Click({
+	$PopupCanvas2.Visibility = 'Hidden'
+})
+
+$btnReset.Add_Click({
+	if ($originalGatewayPrefix) {
+		$parts = $originalGatewayPrefix -split '\.'
+		if ($parts.Length -ge 3) {
+			$SubnetIP1.SelectedItem = [int]$parts[0]
+			$SubnetIP2.SelectedItem = [int]$parts[1]
+			$SubnetIP3.SelectedItem = [int]$parts[2]
+			$global:gatewayPrefix = $originalGatewayPrefix
+		}
+	}
+})
+
+$btnReset.Add_MouseEnter({
+	$btnReset.FindResource("mouseEnterAnimation").Begin($btnReset)
+})
+
+$btnReset.Add_MouseLeave({
+	$btnReset.FindResource("mouseLeaveAnimation").Begin($btnReset)
+})
+
+$btnOK2.Add_Click({
+	if ($SubnetInput.Visibility -eq 'Visible') {
+		$global:gatewayPrefix = "{0}.{1}.{2}." -f $SubnetIP1.SelectedItem, $SubnetIP2.SelectedItem, $SubnetIP3.SelectedItem
+	}
+	$PopupCanvas2.Visibility = 'Hidden'
+})
+
+$btnOK2.Add_MouseEnter({
+	$btnOK2.Foreground='#000000'
+	$btnOK2.Background='#CCCCCC'
+})
+$btnOK2.Add_MouseLeave({
+	$btnOK2.Foreground='#EEEEEE'
+	$btnOK2.Background='#111111'
+})
+
+$btnCancel2.Add_MouseEnter({
+	$btnCancel2.Foreground='#000000'
+	$btnCancel2.Background='#CCCCCC'
+})
+$btnCancel2.Add_MouseLeave({
+	$btnCancel2.Foreground='#EEEEEE'
+	$btnCancel2.Background='#111111'
+})
 
 $btnRDP.Add_Click({
 	&mstsc /v:$tryToConnect
@@ -1714,7 +1844,7 @@ $Scan.Add_Click({
 		$ExportContext.IsEnabled = $false
 		$hostNameColumn.Width = 284
 		Update-uiMain
-		Get-HostInfo
+		Get-HostInfo -gateway $global:gateway -gatewayPrefix $global:gatewayPrefix -originalGatewayPrefix $originalGatewayPrefix
 		$externalIPt.Text = "`- `[ External IP: $externalIP `]"
 		$domainName.Text = "`- `[ Domain: $domain `]"
 		Update-uiMain
