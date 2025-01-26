@@ -929,7 +929,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					<ListView.ContextMenu>
 						<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
 							<MenuItem Header="    Export    " Name="ExportContext" Style="{StaticResource MainMenuItemStyle}">
-								<MenuItem Header="	 HTML   " Name="ExportToHTML" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="   HTML   " Name="ExportToHTML" Style="{StaticResource CustomMenuItemStyle}"/>
 								<MenuItem Header="   CSV    " Name="ExportToCSV" Style="{StaticResource CustomMenuItemStyle}"/>
 								<MenuItem Header="   Text   " Name="ExportToText" Style="{StaticResource CustomMenuItemStyle}"/>
 							</MenuItem>
@@ -1040,7 +1040,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 									</Button>
 								</StackPanel>
 							</StackPanel>
-							<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,10,0,0" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}" Panel.ZIndex="1"/>
+							<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,10,10,10" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}" Panel.ZIndex="1"/>
 						</Grid>
 					</Border>
 					<Canvas.ContextMenu>
@@ -1051,10 +1051,41 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								<MenuItem Header="  MAC Address  " Name="PopupContextCopyMAC" Style="{StaticResource CustomMenuItemStyle}"/>
 								<MenuItem Header="  Vendor       " Name="PopupContextCopyVendor" Style="{StaticResource CustomMenuItemStyle}"/>
 								<Separator Background="#111111"/>
-								<MenuItem Header="  All			 " Name="PopupContextCopyAll" Style="{StaticResource CustomMenuItemStyle}"/>
+								<MenuItem Header="  All          " Name="PopupContextCopyAll" Style="{StaticResource CustomMenuItemStyle}"/>
 							</MenuItem>
 						</ContextMenu>
 					</Canvas.ContextMenu>
+				</Canvas>
+				<Canvas Name="PopupCanvas2" Background="#222222" Visibility="Hidden" Width="330" Height="200" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
+					<Border Name="PopupBorder2" Width="330" Height="200" BorderThickness="0.70" CornerRadius="5" Background="#333333" Opacity="0.95">
+						<Border.BorderBrush>
+							<SolidColorBrush Color="#CCCCCC"/>
+						</Border.BorderBrush>
+						<Border.RenderTransform>
+							<TransformGroup>
+								<ScaleTransform/>
+								<SkewTransform/>
+								<RotateTransform/>
+								<TranslateTransform/>
+							</TransformGroup>
+						</Border.RenderTransform>
+						<Grid>
+							<Grid.RowDefinitions>
+								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="*"/>
+								<RowDefinition Height="Auto"/>
+							</Grid.RowDefinitions>
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="*"/>
+							</Grid.ColumnDefinitions>
+							<TextBlock Name="PopupTitle2" HorizontalAlignment="Center" Margin="0,10,0,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Grid.Row="0"/>
+							<TextBlock Name="PopupText2" TextWrapping="Wrap" Margin="10,40,10,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Top" HorizontalAlignment="Center" Grid.Row="1"/>
+							<Button Name="pCloseButton2" Content="X" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" HorizontalAlignment="Right" Margin="0,5,5,5" Height="18" Width="22" Grid.Row="0" Grid.Column="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							<StackPanel Name="ButtonStackPanel2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,0,0,25" Grid.Row="2">
+								<Button Name="btnOK2" Content="OK" Margin="5,10,5,10" Background="#111111" Foreground="#EEEEEE" Width="75" Height="25" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							</StackPanel>
+						</Grid>
+					</Border>
 				</Canvas>
 			</Grid>
 		</Grid>
@@ -1069,6 +1100,11 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:6"/>
 					</ColorAnimationUsingKeyFrames>
 					<ColorAnimationUsingKeyFrames Storyboard.TargetName="PopupBorder" Storyboard.TargetProperty="BorderBrush.Color" RepeatBehavior="Forever" Duration="0:0:6">
+						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:0"/>
+						<LinearColorKeyFrame Value="#FF00BFFF" KeyTime="0:0:3"/>
+						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:6"/>
+					</ColorAnimationUsingKeyFrames>
+					<ColorAnimationUsingKeyFrames Storyboard.TargetName="PopupBorder2" Storyboard.TargetProperty="BorderBrush.Color" RepeatBehavior="Forever" Duration="0:0:6">
 						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:0"/>
 						<LinearColorKeyFrame Value="#FF00BFFF" KeyTime="0:0:3"/>
 						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:6"/>
@@ -1164,6 +1200,51 @@ $pCloseButton.Add_MouseLeave({
 	$pCloseButton.Background='#111111'
 })
 
+$pCloseButton2.Add_Click({
+	$PopupCanvas2.Visibility = 'Hidden'
+})
+
+$pCloseButton2.Add_MouseEnter({
+	$pCloseButton2.Background='#ff0000'
+})
+$pCloseButton2.Add_MouseLeave({
+	$pCloseButton2.Background='#111111'
+})
+
+$btnOK2.Add_Click({
+	$PopupCanvas2.Visibility = 'Hidden'
+})
+
+$btnOK2.Add_MouseEnter({
+	$btnOK2.Foreground='#000000'
+	$btnOK2.Background='#CCCCCC'
+})
+
+$btnOK2.Add_MouseLeave({
+	$btnOK2.Foreground='#EEEEEE'
+	$btnOK2.Background='#111111'
+})
+
+# Message popup
+function Show-Popup2 {
+	param (
+		[string]$Message,
+		[string]$Title = 'Info:'
+	)
+
+	$PopupText2.Text = $Message
+    $PopupTitle2.Text = $Title
+	$btnOK2.IsEnabled = $true
+
+	# Center the popup
+	$centerX = ($Main.ActualWidth - $PopupBorder2.ActualWidth) / 2
+	$centerY = ($Main.ActualHeight - $PopupBorder2.ActualHeight) / 2
+	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
+	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
+
+	$PopupCanvas2.Visibility = 'Visible'
+}
+
 # Define icons
 $icons = @(
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 18; ElementName = "WindowIcon"; Type = "Window"},
@@ -1207,7 +1288,6 @@ foreach ($icon in $icons) {
 }
 
 $btnRDP.Add_Click({
-	$PopupCanvas.Visibility = 'Hidden'
 	&mstsc /v:$tryToConnect
 })
 
@@ -1220,9 +1300,6 @@ $btnRDP.Add_MouseLeave({
 })
 
 $btnWebInterface.Add_Click({
-	$btnWebInterface.BorderThickness = "0"
-	$PopupCanvas.Visibility = 'Hidden'
-
 	# Priority order: HTTP/HTTPS
 	if($script:httpAvailable -eq 1){
 		Start-Process "`"http://$tryToConnect`""
@@ -1240,7 +1317,6 @@ $btnWebInterface.Add_MouseLeave({
 })
 
 $btnShare.Add_Click({
-	$PopupCanvas.Visibility = 'Hidden'
 	&explorer "`"\\$tryToConnect`""
 })
 
@@ -1315,12 +1391,10 @@ $ExportToHTML.Add_Click({
 
 			# Write HTML to file
 			[System.IO.File]::WriteAllText($path, $htmlContent)
-			$shell = New-Object -ComObject Wscript.Shell
-			$shell.Popup("Export to HTML completed successfully!",0,'Export:',0x0) | Out-Null
+			Show-Popup2 -Message 'Export to HTML completed successfully!' -Title 'Export:'
 		}
 		catch {
-			$shell = New-Object -ComObject Wscript.Shell
-			$shell.Popup("Error during export: $_",0,'Error:',0x0) | Out-Null
+			Show-Popup2 -Message "Error during export: $_" -Title 'ERROR:'
 		}
 	}
 })
@@ -1340,12 +1414,10 @@ $ExportToCSV.Add_Click({
 				"`r`n$($_.MACaddress),$($_.Vendor),$($_.IPaddress),$($_.HostName.Replace(' (This Device)',''))"
 			}
 			[System.IO.File]::WriteAllLines($path, ($csvHeader + $csvContent))
-			$shell = New-Object -ComObject Wscript.Shell
-			$shell.Popup("Export to CSV completed successfully!",0,'Export:',0x0) | Out-Null
+			Show-Popup2 -Message 'Export to CSV completed successfully!' -Title 'Export:'
 		}
 		catch {
-			$shell = New-Object -ComObject Wscript.Shell
-			$shell.Popup("Error during export: $_",0,'Error:',0x0) | Out-Null
+			Show-Popup2 -Message "Error during export: $_" -Title 'ERROR:'
 		}
 	}
 })
@@ -1379,12 +1451,10 @@ Hostname : $($_.HostName.Replace(' (This Device)',''))
 "@
 			}
 			[System.IO.File]::WriteAllText($path, $textContent)
-			$shell = New-Object -ComObject Wscript.Shell
-			$shell.Popup("Export to Text completed successfully!",0,'Export:',0x0) | Out-Null
+			Show-Popup2 -Message 'Export to Text completed successfully!' -Title 'Export:'
 		}
 		catch {
-			$shell = New-Object -ComObject Wscript.Shell
-			$shell.Popup("Error during export: $_",0,'Error:',0x0) | Out-Null
+			Show-Popup2 -Message "Error during export: $_" -Title 'ERROR:'
 		}
 	}
 })
@@ -1418,7 +1488,6 @@ $listView.Add_MouseDoubleClick({
 })
 
 $listView.Add_MouseLeftButtonDown({
-	$PopupCanvas.Visibility = 'Hidden'
 	$listView.SelectedItems.Clear()
 })
 
@@ -1427,11 +1496,9 @@ $PopupContextCopyIP_Click = {
 	if ($PopupCanvas.Visibility -eq 'Visible') {
 		$ipText = $pIP.Text -replace 'IP: '
 		Set-Clipboard -Value $ipText
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("IP Address copied to clipboard!",0,'Info:',0x0) | Out-Null
+		Show-Popup2 -Message 'IP Address copied to clipboard!' -Title 'Info:'
 	} else {
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("No item available to copy IP Address from!",0,'Warning:',0x0) | Out-Null
+		Show-Popup2 -Message 'No item available to copy IP Address from!' -Title 'Warning:'
 	}
 }
 $PopupContextCopyIP.Add_Click($PopupContextCopyIP_Click)
@@ -1441,11 +1508,9 @@ $PopupContextCopyHostname_Click = {
 	if ($PopupCanvas.Visibility -eq 'Visible') {
 		$hostText = $pHost.Text -replace 'Host: '
 		Set-Clipboard -Value $hostText
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("Hostname copied to clipboard!",0,'Info:',0x0) | Out-Null
+		Show-Popup2 -Message 'Hostname copied to clipboard!' -Title 'Info:'
 	} else {
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("No item available to copy Hostname from!",0,'Warning:',0x0) | Out-Null
+		Show-Popup2 -Message 'No item available to copy Hostname from!' -Title 'Warning:'
 	}
 }
 $PopupContextCopyHostname.Add_Click($PopupContextCopyHostname_Click)
@@ -1455,11 +1520,9 @@ $PopupContextCopyMAC_Click = {
 	if ($PopupCanvas.Visibility -eq 'Visible') {
 		$macText = $pMAC.Text -replace 'MAC: '
 		Set-Clipboard -Value $macText
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("MAC Address copied to clipboard!",0,'Info:',0x0) | Out-Null
+		Show-Popup2 -Message 'MAC Address copied to clipboard!' -Title 'Info:'
 	} else {
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("No item available to copy MAC Address from!",0,'Warning:',0x0) | Out-Null
+		Show-Popup2 -Message 'No item available to copy MAC Address from!' -Title 'Warning:'
 	}
 }
 $PopupContextCopyMAC.Add_Click($PopupContextCopyMAC_Click)
@@ -1469,11 +1532,9 @@ $PopupContextCopyVendor_Click = {
 	if ($PopupCanvas.Visibility -eq 'Visible') {
 		$vendorText = $pVendor.Text -replace 'Vendor: '
 		Set-Clipboard -Value $vendorText
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("Vendor copied to clipboard!",0,'Info:',0x0) | Out-Null
+		Show-Popup2 -Message 'Vendor copied to clipboard!' -Title 'Info:'
 	} else {
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("No item available to copy Vendor from!",0,'Warning:',0x0) | Out-Null
+		Show-Popup2 -Message 'No item available to copy Vendor from!' -Title 'Warning:'
 	}
 }
 $PopupContextCopyVendor.Add_Click($PopupContextCopyVendor_Click)
@@ -1487,11 +1548,9 @@ $PopupContextCopyAll_Click = {
 		$vendorText = $pVendor.Text -replace 'Vendor: '
 		$details = "Host: $hostText`nIP: $ipText`nMAC: $macText`nVendor: $vendorText"
 		Set-Clipboard -Value $details
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("All details copied to clipboard!",0,'Info:',0x0) | Out-Null
+		Show-Popup2 -Message 'All details copied to clipboard!' -Title 'Info:'
 	} else {
-		$shell = New-Object -ComObject Wscript.Shell
-		$shell.Popup("No item available to copy details from!",0,'Warning:',0x0) | Out-Null
+		Show-Popup2 -Message 'No item available to copy details from!' -Title 'Warning:'
 	}
 }
 $PopupContextCopyAll.Add_Click($PopupContextCopyAll_Click)
@@ -1575,19 +1634,22 @@ $Scan.Add_Click({
 	if($PopupCanvas.Visibility -eq 'Visible') {
 		$PopupCanvas.Visibility = 'Hidden'
 	}
+	if($PopupCanvas2.Visibility -eq 'Visible') {
+		$PopupCanvas2.Visibility = 'Hidden'
+	}
 	# If CTRL key is held while clicking the Scan button, offer to clear ARP cache as Admin prior to Scan process
 	if ($global:CtrlIsDown) {
 		$Scan.IsEnabled = $false
 		$osInfo = Get-CimInstance Win32_OperatingSystem
 		if ($osInfo.Caption -match "Server") {
-			$restricted=New-Object -ComObject Wscript.Shell;$restricted.Popup("This option is not available for Windows Servers.`n`nPlease clear your ARP Cache manually.",0,'[Restricted Feature]',0 + 4096) | Out-Null
+			Show-Popup2 -Message 'This option is not available for Windows Servers. Please clear your ARP Cache manually.' -Title 'Restricted Feature:'
 		} else {
 			try{
 				Start-Process -Verb RunAs powershell -WindowStyle Minimized -ArgumentList '-Command "& {Remove-NetNeighbor -InterfaceAlias * -Confirm:$false}"'
 				$listView.Items.Clear()
-				$isCleared=New-Object -ComObject Wscript.Shell;$isCleared.Popup("Cached peer list cleared...",0,'[List Cleared]',0 + 4096) | Out-Null
+				Show-Popup2 -Message 'Cached peer list cleared...' -Title 'List Cleared:'
 			}catch{
-				$dontClear=New-Object -ComObject Wscript.Shell;$dontClear.Popup("No action was taken...",0,'[Process Aborted]',0 + 4096) | Out-Null
+				Show-Popup2 -Message 'No action was taken...' -Title 'Process Aborted:'
 			}
 		}
 		$scanButtonText.Text = 'Scan'
