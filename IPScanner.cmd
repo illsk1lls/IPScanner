@@ -475,7 +475,7 @@ function processHostnames {
 	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
 
-# Portscan
+# Quick Portscan
 function CheckConnectivity {
 	param (
 		[string]$selectedhost
@@ -942,6 +942,70 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 				</Setter.Value>
 			</Setter>
 		</Style>
+		<Style x:Key="CustomComboBoxStyle2" TargetType="{x:Type ComboBox}">
+			<Setter Property="Width" Value="98"/>
+			<Setter Property="Height" Value="25"/>
+			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Setter Property="Margin" Value="0,0,5,0"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type ComboBox}">
+						<Grid>
+							<ToggleButton Name="ToggleButton" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Background="#333333" Foreground="#EEEEEE" BorderThickness="0.85" BorderBrush="#FF00BFFF">
+								<TextBlock Text="{Binding SelectedItem, RelativeSource={RelativeSource TemplatedParent}}" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#EEEEEE" Margin="5,0,0,0"/>
+								<ToggleButton.Template>
+									<ControlTemplate TargetType="{x:Type ToggleButton}">
+										<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+											<ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+										</Border>
+										<ControlTemplate.Triggers>
+											<Trigger Property="IsMouseOver" Value="True">
+												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+											</Trigger>
+											<Trigger Property="IsChecked" Value="True">
+												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+											</Trigger>
+										</ControlTemplate.Triggers>
+									</ControlTemplate>
+								</ToggleButton.Template>
+							</ToggleButton>
+							<Popup IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide" Width="98">
+								<Border Name="DropDownBorder" BorderBrush="#CCCCCC" BorderThickness="0.80" Background="#444444">
+									<ScrollViewer MaxHeight="135" VerticalScrollBarVisibility="Hidden">
+										<StackPanel IsItemsHost="True">
+											<StackPanel.Resources>
+												<Style TargetType="{x:Type ComboBoxItem}">
+													<Setter Property="Foreground" Value="#EEEEEE"/>
+													<Setter Property="Background" Value="#444444"/>
+													<Setter Property="HorizontalContentAlignment" Value="Center"/>
+													<Style.Triggers>
+														<Trigger Property="IsHighlighted" Value="True">
+															<Setter Property="Background" Value="#555555"/>
+														</Trigger>
+														<Trigger Property="IsSelected" Value="True">
+															<Setter Property="Background" Value="#555555"/>
+														</Trigger>
+													</Style.Triggers>
+												</Style>
+											</StackPanel.Resources>
+										</StackPanel>
+									</ScrollViewer>
+								</Border>
+							</Popup>
+						</Grid>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="ToggleButton" Property="BorderBrush" Value="#EEEEEE"/>
+							</Trigger>
+							<Trigger Property="IsDropDownOpen" Value="True">
+								<Setter TargetName="DropDownBorder" Property="BorderBrush" Value="#FF00BFFF"/>
+								<Setter TargetName="ToggleButton" Property="BorderBrush" Value="#EEEEEE"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
 	</Window.Resources>
 	<Border Background="#222222" CornerRadius="5,5,5,5">
 		<Grid>
@@ -1069,7 +1133,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					</ListView.ContextMenu>
 				</ListView>
 				<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
-					<Border Name="PopupBorder" Width="350" Height="240" BorderThickness="0.70">
+					<Border Name="PopupBorder" CornerRadius="5" Width="350" Height="240" BorderThickness="0.70">
 						<Border.BorderBrush>
 							<SolidColorBrush Color="#CCCCCC"/>
 						</Border.BorderBrush>
@@ -1086,7 +1150,29 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 							</StackPanel>
 							<StackPanel Margin="10" Grid.Row="1">
 								<TextBlock Name="pHost" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Margin="15,0,0,0"/>
-								<TextBlock Name="pIP" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
+								<StackPanel Orientation="Horizontal">
+									<TextBlock Name="pIP" FontSize="14" Foreground="#EEEEEE" Margin="15,2,5,2" />
+									<Button Name="btnPortScan" Width="13" Height="13" ToolTip="Scan Ports" Margin="3,1,10,0" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="True" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+										<Button.Effect>
+											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+										</Button.Effect>
+										<Button.Resources>
+											<Storyboard x:Key="mouseEnterAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-1" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="3" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="3" Duration="0:0:0.2"/>
+											</Storyboard>
+											<Storyboard x:Key="mouseLeaveAnimation">
+												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="1.5" Duration="0:0:0.2"/>
+												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="1.5" Duration="0:0:0.2"/>
+											</Storyboard>
+										</Button.Resources>
+										<Button.RenderTransform>
+											<TranslateTransform/>
+										</Button.RenderTransform>
+									</Button>
+								</StackPanel>
 								<TextBlock Name="pMAC" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
 								<TextBlock Name="pVendor" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
 								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,35,0,0">
@@ -1189,7 +1275,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					</Canvas.ContextMenu>
 				</Canvas>
 				<Canvas Name="PopupCanvas2" Background="#222222" Visibility="Hidden" Width="330" Height="220" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
-					<Border Name="PopupBorder2" Width="330" Height="220" BorderThickness="0.70" CornerRadius="5" Background="#333333" Opacity="0.95">
+					<Border Name="PopupBorder2" Width="330" Height="220" BorderThickness="0.70" CornerRadius="5" Background="#222222" Opacity="0.95">
 						<Border.BorderBrush>
 							<SolidColorBrush Color="#CCCCCC"/>
 						</Border.BorderBrush>
@@ -1204,15 +1290,15 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						<Grid>
 							<Grid.RowDefinitions>
 								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="Auto"/>
 								<RowDefinition Height="*"/>
 								<RowDefinition Height="Auto"/>
-								<RowDefinition Height="Auto"/>
 							</Grid.RowDefinitions>
-							<TextBlock Name="PopupTitle2" HorizontalAlignment="Center" Margin="0,10,0,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Grid.Row="0"/>
-							<TextBlock Name="PopupText2" TextWrapping="Wrap" Margin="10,60,10,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Top" HorizontalAlignment="Center" Grid.Row="1" Visibility="Visible"/>
-							<StackPanel Name="SubnetInput" Grid.Row="1" Margin="10,60,10,0" Visibility="Collapsed">
+							<TextBlock Name="PopupTitle2" HorizontalAlignment="Center" Margin="0,15,0,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Grid.Row="0"/>
+							<TextBlock Name="PopupText2" TextWrapping="Wrap" Margin="10,60,10,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Top" HorizontalAlignment="Center" Grid.Row="1" Visibility="Collapsed"/>
+							<StackPanel Name="SubnetInput" Grid.Row="1" Margin="10,55,10,0" Visibility="Collapsed">
 								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-									<TextBlock Text="Subnet" FontSize="14" Foreground="#EEEEEE" Margin="0,2,5,5"/>
+									<TextBlock Text="Subnet" FontSize="14" Foreground="#EEEEEE" Margin="-7,2,5,5"/>
 									<ComboBox Name="subnetOctet1" Style="{StaticResource CustomComboBoxStyle}"/>
 									<ComboBox Name="subnetOctet2" Style="{StaticResource CustomComboBoxStyle}"/>
 									<ComboBox Name="subnetOctet3" Style="{StaticResource CustomComboBoxStyle}"/>
@@ -1239,8 +1325,68 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 									</Button.RenderTransform>
 								</Button>
 							</StackPanel>
+							<StackPanel Orientation="Horizontal" Grid.Row="1" Margin="10,5,10,5" HorizontalAlignment="Center" Visibility="Collapsed" Name="ScanPanel">
+								<Button Name="btnScan" Background="#777777" Width="200" Height="25" Margin="0,5,5,0" Template="{StaticResource NoMouseOverButtonTemplate}">
+									<Button.Content>
+										<TextBlock Name="btnScanText" FontWeight="Bold" HorizontalAlignment="Center"/>
+									</Button.Content>
+										<Button.BorderBrush>
+											<SolidColorBrush x:Name="CycleBrush2" Color="White"/>
+										</Button.BorderBrush>
+								</Button>
+								<Grid>
+									<ProgressBar Name="ProgressBar" Foreground="#FF00BFFF" Background="#777777" Width="200" Height="25" Value="0" Minimum="0" Maximum="100" HorizontalAlignment="Left" Margin="0,5,5,0" Visibility="Collapsed"/>
+									<TextBlock Name="ProgressText" Foreground="#000000" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Margin="0,5,0,0"/>
+								</Grid>
+								<ComboBox Name="cmbPortRange" Width="98" Height="25" Margin="5,5,0,0" Style="{StaticResource CustomComboBoxStyle2}"/>
+							</StackPanel>
+							<ListBox Name="ResultsList" Grid.Row="2" Margin="10,10,10,10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#333333" Foreground="#EEEEEE" Visibility="Collapsed">
+								<ListBox.ItemContainerStyle>
+									<Style TargetType="{x:Type ListBoxItem}">
+										<Setter Property="Background" Value="Transparent" />
+										<Setter Property="Foreground" Value="#EEEEEE"/>
+										<Setter Property="BorderBrush" Value="Transparent"/>
+										<Setter Property="BorderThickness" Value="0.70"/>
+										<Setter Property="Template">
+											<Setter.Value>
+												<ControlTemplate TargetType="{x:Type ListBoxItem}">
+													<Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}">
+														<ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Content="{TemplateBinding Content}"/>
+													</Border>
+													<ControlTemplate.Triggers>
+														<Trigger Property="ItemsControl.AlternationIndex" Value="0">
+															<Setter Property="Background" Value="#111111"/>
+															<Setter Property="Foreground" Value="#EEEEEE"/>
+														</Trigger>
+														<Trigger Property="ItemsControl.AlternationIndex" Value="1">
+															<Setter Property="Background" Value="#000000"/>
+															<Setter Property="Foreground" Value="#EEEEEE"/>
+														</Trigger>
+														<Trigger Property="IsMouseOver" Value="True">
+															<Setter Property="Background" Value="#4000B7FF"/>
+															<Setter Property="Foreground" Value="#EEEEEE"/>
+															<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+														</Trigger>
+														<MultiTrigger>
+															<MultiTrigger.Conditions>
+																<Condition Property="IsSelected" Value="true"/>
+																<Condition Property="Selector.IsSelectionActive" Value="true"/>
+															</MultiTrigger.Conditions>
+															<Setter Property="Background" Value="#4000B7FF"/>
+															<Setter Property="Foreground" Value="#EEEEEE"/>
+															<Setter Property="FontWeight" Value="Bold"/>
+															<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+														</MultiTrigger>
+													</ControlTemplate.Triggers>
+												</ControlTemplate>
+											</Setter.Value>
+										</Setter>
+									</Style>
+								</ListBox.ItemContainerStyle>
+								<ListBox.AlternationCount>2</ListBox.AlternationCount>
+							</ListBox>
 							<Button Name="pCloseButton2" Content="X" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" HorizontalAlignment="Right" Margin="0,5,5,5" Height="18" Width="22" Grid.Row="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
-							<StackPanel Name="ButtonStackPanel2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,0,0,10" Grid.Row="2">
+							<StackPanel Name="ButtonStackPanel2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Grid.Row="3" Margin="0,10,0,10">
 								<Button Name="btnOK2" Content="OK" Margin="5,10,5,10" Background="#111111" Foreground="#EEEEEE" Width="75" Height="25" Template="{StaticResource NoMouseOverButtonTemplate}"/>
 							</StackPanel>
 						</Grid>
@@ -1254,6 +1400,11 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 			<BeginStoryboard>
 				<Storyboard>
 					<ColorAnimationUsingKeyFrames Storyboard.TargetName="CycleBrush" Storyboard.TargetProperty="Color" RepeatBehavior="Forever" Duration="0:0:6">
+						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:0"/>
+						<LinearColorKeyFrame Value="#FF00BFFF" KeyTime="0:0:3"/>
+						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:6"/>
+					</ColorAnimationUsingKeyFrames>
+					<ColorAnimationUsingKeyFrames Storyboard.TargetName="CycleBrush2" Storyboard.TargetProperty="Color" RepeatBehavior="Forever" Duration="0:0:6">
 						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:0"/>
 						<LinearColorKeyFrame Value="#FF00BFFF" KeyTime="0:0:3"/>
 						<LinearColorKeyFrame Value="#CCCCCC" KeyTime="0:0:6"/>
@@ -1372,26 +1523,42 @@ $pCloseButton2.Add_MouseLeave({
 	$pCloseButton2.Background='#111111'
 })
 
-# Message popup
+function Show-SubnetPopup {
+	$btnOK2.Visibility = 'Visible'
+	$PopupTitle2.Text = 'Segment Exploration'
+	$SubnetInput.Visibility = 'Visible'
+	$ScanPanel.Visibility = 'Collapsed'
+	$ResultsList.Visibility = 'Collapsed'
+	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
+	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
+	$PopupCanvas2.Visibility = 'Visible'
+}
+
+function Show-PortScanPopup {
+	$btnOK2.Visibility = 'Collapsed'
+	$PopupTitle2.Text = "Probe - $global:target"
+	$SubnetInput.Visibility = 'Collapsed'
+	$ScanPanel.Visibility = 'Visible'
+	$ResultsList.Visibility = 'Visible'
+	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
+	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
+	$PopupCanvas2.Visibility = 'Visible'
+}
+
 function Show-Popup2 {
 	param (
 		[string]$Message,
 		[string]$Title = 'Info',
 		[bool]$IsSubnetPopup = $false
 	)
+	$SubnetInput.Visibility = 'Collapsed'
+	$ScanPanel.Visibility = 'Collapsed'
+	$ResultsList.Visibility = 'Collapsed'
+	$PopupText2.Visibility = 'Visible'
+	$btnOK2.Visibility = 'Visible'
 
 	$PopupTitle2.Text = $Title
 	$PopupText2.Text = $Message
-
-	if ($IsSubnetPopup) {
-		$SubnetInput.Visibility = 'Visible'
-		$PopupText2.Visibility = 'Collapsed'
-		$btnOK2.Content = 'OK'
-	} else {
-		$SubnetInput.Visibility = 'Collapsed'
-		$PopupText2.Visibility = 'Visible'
-		$btnOK2.Content = 'OK'
-	}
 
 	$centerX = ($Main.ActualWidth - $PopupBorder2.ActualWidth) / 2
 	$centerY = ($Main.ActualHeight - $PopupBorder2.ActualHeight) / 2
@@ -1401,6 +1568,109 @@ function Show-Popup2 {
 	$PopupCanvas2.Visibility = 'Visible'
 }
 
+function Test-Port {
+	param (
+		[string]$computer,
+		[int]$port
+	)
+	$tcp = New-Object System.Net.Sockets.TcpClient
+	try {
+		$result = $tcp.BeginConnect($computer, $port, $null, $null)
+		$success = $result.AsyncWaitHandle.WaitOne(5, $true)
+		if ($success) {
+			return "Port`: $port is open"
+		}
+		else {
+			return $null
+		}
+	}
+	catch {
+		return $null
+	}
+	finally {
+		$tcp.Close()
+	}
+}
+
+$btnPortScan.Add_Click({
+	$global:target = $pIP.Text -replace 'IP: '
+
+	# Set multi-popup for portscan
+	Show-PortScanPopup
+	$PopupText2.Visibility = 'Collapsed'
+	$SubnetInput.Visibility = 'Collapsed'
+
+	# Show port scanning elements
+	$btnScan.Visibility = 'Visible'
+	$btnScanText.Text = 'Scan Ports'
+	$ProgressBar.Visibility = 'Collapsed'
+	$ProgressText.Visibility = 'Visible'
+	$ProgressText.Text = ''
+	$cmbPortRange.Visibility = 'Visible'
+	$ResultsList.Visibility = 'Visible'
+	$ResultsList.Items.Clear()
+	$PopupCanvas2.Visibility = 'Visible'
+
+	$btnOK2.Content = 'OK'
+	$ButtonStackPanel2.Visibility = 'Visible'
+
+	# Initialize combobox if not already done
+	if ($cmbPortRange.Items.Count -eq 0) {
+		for ($start = 1; $start -le 65535; $start += 4000) {
+			$end = [Math]::Min($start + 3999, 65535)
+			$range = "$start-$end"
+			$cmbPortRange.Items.Add($range) | Out-Null
+		}
+		$cmbPortRange.SelectedIndex = 0
+	}
+})
+
+$btnScan.Add_Click({
+	$btnScan.IsEnabled = $false
+	$Scan.IsEnabled = $false
+	# Check if anything is selected in the ComboBox
+	if ($cmbPortRange.SelectedIndex -ge 0) {
+		$selectedRange = $cmbPortRange.SelectedItem.ToString()
+		$portRange = $selectedRange -split '-' | ForEach-Object {[int]$_}
+		$startPort, $endPort = $portRange
+		$totalPorts = $endPort - $startPort + 1
+
+		if($ResultsList.Items){
+			$ResultsList.Items.Clear()
+		}
+		$openPorts = @()
+		$ProgressText.Text = 'Scanning Ports'
+		$btnScan.Visibility = 'Collapsed'
+		$ProgressBar.Visibility = 'Visible'
+		$ProgressText.Visibility = 'Visible'
+		Update-uiMain
+
+		for ($port = $startPort; $port -le $endPort; $port++) {
+			$result = Test-Port -computer $global:target -port $port
+			if ($result) {
+				$openPorts += $result
+				$ResultsList.Items.Add($result)
+			}
+			$progress = (($port - $startPort + 1) / $totalPorts) * 100
+			$ProgressBar.Value = $progress
+			Update-uiMain
+		}
+
+		if ($openPorts.Count -eq 0) {
+			$ResultsList.Items.Add("No open ports found in the specified range.")
+		}
+		$ProgressText.Visibility = 'Collapsed'
+		$btnScan.Visibility = 'Visible'
+		$ProgressBar.Visibility = 'Collapsed'
+		$ProgressBar.Value = 0
+		Update-uiMain
+	} else {
+		$ResultsList.Items.Add("Please select a port range.")
+	}
+	$btnScan.IsEnabled = $true
+	$Scan.IsEnabled = $true
+})
+
 # Define icons
 $icons = @(
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 18; ElementName = "WindowIcon"; Type = "Window"},
@@ -1409,7 +1679,8 @@ $icons = @(
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"},
 	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"},
-	@{File = 'C:\Windows\System32\imageres.dll'; Index = 229; ElementName = "btnReset"; Type = "Button"}
+	@{File = 'C:\Windows\System32\imageres.dll'; Index = 229; ElementName = "btnReset"; Type = "Button"},
+	@{File = 'C:\Windows\System32\imageres.dll'; Index = 168; ElementName = "btnPortScan"; Type = "Button"}
 )
 
 # Extract and set icons
@@ -1432,10 +1703,13 @@ foreach ($icon in $icons) {
 				$element.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 			}
 			"Button" {
+				$imageWidth = if($icon.ElementName -eq "btnReset"){16} elseif($icon.ElementName -eq "btnPortScan"){13} else {24}
+				$imageHeight = if($icon.ElementName -eq "btnReset"){16} elseif($icon.ElementName -eq "btnPortScan"){13} else {24}
 				$image = New-Object System.Windows.Controls.Image -Property @{
 					Source = $bitmapSource;
-					Width = if($icon.ElementName -eq "btnReset"){16} else {24};
-					Height = if($icon.ElementName -eq "btnReset"){16} else {24};
+					Width = $imageWidth;
+					Height = $imageHeight;
+					Stretch = [System.Windows.Media.Stretch]::Fill
 				}
 				$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 				$element.Content = $image
@@ -1469,7 +1743,7 @@ $ChangeSubnet.Add_Click({
 		$subnetOctet2.SelectedItem = 168
 		$subnetOctet3.SelectedItem = 1
 	}
-	Show-Popup2 -Title "Segment Exploration" -IsSubnetPopup $true
+	Show-SubnetPopup
 })
 
 $btnReset.Add_Click({
@@ -1482,14 +1756,6 @@ $btnReset.Add_Click({
 			$global:gatewayPrefix = $originalGatewayPrefix
 		}
 	}
-})
-
-$btnReset.Add_MouseEnter({
-	$btnReset.FindResource("mouseEnterAnimation").Begin($btnReset)
-})
-
-$btnReset.Add_MouseLeave({
-	$btnReset.FindResource("mouseLeaveAnimation").Begin($btnReset)
 })
 
 $btnOK2.Add_Click({
@@ -1518,14 +1784,6 @@ $btnRDP.Add_Click({
 	&mstsc /v:$tryToConnect
 })
 
-$btnRDP.Add_MouseEnter({
-	$btnRDP.FindResource("mouseEnterAnimation").Begin($btnRDP)
-})
-
-$btnRDP.Add_MouseLeave({
-	$btnRDP.FindResource("mouseLeaveAnimation").Begin($btnRDP)
-})
-
 $btnWebInterface.Add_Click({
 	# Priority order: HTTP/HTTPS
 	if($script:httpAvailable -eq 1){
@@ -1535,16 +1793,33 @@ $btnWebInterface.Add_Click({
 	}
 })
 
+$btnShare.Add_Click({
+	&explorer "`"\\$tryToConnect`""
+})
+
+# Button Animation Triggers
+$btnRDP.Add_MouseEnter({
+	$btnRDP.FindResource("mouseEnterAnimation").Begin($btnRDP)
+})
+
+$btnRDP.Add_MouseLeave({
+	$btnRDP.FindResource("mouseLeaveAnimation").Begin($btnRDP)
+})
+
+$btnReset.Add_MouseEnter({
+	$btnReset.FindResource("mouseEnterAnimation").Begin($btnReset)
+})
+
+$btnReset.Add_MouseLeave({
+	$btnReset.FindResource("mouseLeaveAnimation").Begin($btnReset)
+})
+
 $btnWebInterface.Add_MouseEnter({
 	$btnWebInterface.FindResource("mouseEnterAnimation").Begin($btnWebInterface)
 })
 
 $btnWebInterface.Add_MouseLeave({
 	$btnWebInterface.FindResource("mouseLeaveAnimation").Begin($btnWebInterface)
-})
-
-$btnShare.Add_Click({
-	&explorer "`"\\$tryToConnect`""
 })
 
 $btnShare.Add_MouseEnter({
@@ -1561,6 +1836,14 @@ $btnNone.Add_MouseEnter({
 
 $btnNone.Add_MouseLeave({
 	$btnNone.FindResource("mouseLeaveAnimation").Begin($btnNone)
+})
+
+$btnPortScan.Add_MouseEnter({
+	$btnPortScan.FindResource("mouseEnterAnimation").Begin($btnPortScan)
+})
+
+$btnPortScan.Add_MouseLeave({
+	$btnPortScan.FindResource("mouseLeaveAnimation").Begin($btnPortScan)
 })
 
 # Export List in HTML format
@@ -1706,7 +1989,7 @@ $listView.Add_MouseDoubleClick({
 		$selectedItem = $listView.SelectedItems[0]
 		$pMAC.Text = "MAC: " + $selectedItem.MACaddress
 		$pVendor.Text = "Vendor: " + $selectedItem.Vendor
-		$pIP.Text = "IP: " + $selectedItem.IPaddress
+		$global:pIP.Text = "IP: " + $selectedItem.IPaddress
 		$pHost.Text = "Host: " + $selectedItem.HostName.Replace(' (This Device)','')
 		$PopupCanvas.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
 		$PopupCanvas.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
@@ -1853,6 +2136,14 @@ if($listview.Items){
 $ExportContext.IsEnabled = $false
 
 # Define Scan Button Actions
+$btnScan.Add_MouseEnter({
+	$btnScan.Background = '#EEEEEE'
+})
+
+$btnScan.Add_MouseLeave({
+	$btnScan.Background = '#777777'
+})
+
 $Scan.Add_MouseEnter({
 	$Scan.Background = '#EEEEEE'
 })
