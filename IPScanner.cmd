@@ -475,7 +475,7 @@ function processHostnames {
 	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
 
-# Quick Portscan
+# Check common ports
 function CheckConnectivity {
 	param (
 		[string]$selectedhost
@@ -509,9 +509,7 @@ function CheckConnectivity {
 	}
 	$results = @{}
 	foreach ($protocol in $ports.Keys) {
-		$client = [System.Net.Sockets.TcpClient]::new()
-		$results[$protocol] = $client.ConnectAsync($tryToConnect, $ports[$protocol]).Wait(250)
-		$client.Close()
+		$results[$protocol] = Test-Port -computer $tryToConnect -port $ports[$protocol]
 	}
 
 	# Update button states based on connectivity results
@@ -537,8 +535,33 @@ function CheckConnectivity {
 	}
 
 	# Show ping response status in popup window
-	$pingStatusImage.Content = if ($selectedItem.Ping) { Create-GradientEllipse -isPingSuccessful $true -width 12 -height 12 } else { Create-GradientEllipse -isPingSuccessful $false -width 12 -height 12	}
+	$pingStatusImage.Content = if ($selectedItem.Ping) { Create-GradientEllipse -isPingSuccessful $true -width 12 -height 12 } else { Create-GradientEllipse -isPingSuccessful $false -width 12 -height 12 }
 	$pingStatusText.Text = if ($selectedItem.Ping) { "ICMP response received" } else { "No ICMP response received" }
+}
+
+# Portscan
+function Test-Port {
+	param (
+		[string]$computer,
+		[int]$port
+	)
+	$tcp = New-Object System.Net.Sockets.TcpClient
+	try {
+		$result = $tcp.BeginConnect($computer, $port, $null, $null)
+		$success = $result.AsyncWaitHandle.WaitOne(5, $true)
+		if ($success) {
+			return "Port`: $port is open"
+		}
+		else {
+			return $null
+		}
+	}
+	catch {
+		return $null
+	}
+	finally {
+		$tcp.Close()
+	}
 }
 
 # Listview column sort logic
@@ -1582,30 +1605,6 @@ function Show-Popup2 {
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
 
 	$PopupCanvas2.Visibility = 'Visible'
-}
-
-function Test-Port {
-	param (
-		[string]$computer,
-		[int]$port
-	)
-	$tcp = New-Object System.Net.Sockets.TcpClient
-	try {
-		$result = $tcp.BeginConnect($computer, $port, $null, $null)
-		$success = $result.AsyncWaitHandle.WaitOne(5, $true)
-		if ($success) {
-			return "Port`: $port is open"
-		}
-		else {
-			return $null
-		}
-	}
-	catch {
-		return $null
-	}
-	finally {
-		$tcp.Close()
-	}
 }
 
 $btnPortScan.Add_Click({
