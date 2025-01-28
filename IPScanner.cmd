@@ -1331,6 +1331,11 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								<RowDefinition Height="Auto"/>
 							</Grid.RowDefinitions>
 							<StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,15,0,0" Visibility="Visible">
+								<Image Name="subnetIcon" Width="32" Height="32" Margin="0,-17,2,0" Visibility="Collapsed">
+									<Image.Effect>
+										<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+									</Image.Effect>
+								</Image>
 								<Path Name="imgPortScan" Grid.Row="0" Width="24" Height="24" Margin="0,-1,5,0" Fill="#FF00BFFF" Data="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" Visibility="Visible">
 									<Path.Effect>
 										<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
@@ -1428,7 +1433,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								</ListBox.ItemContainerStyle>
 								<ListBox.AlternationCount>2</ListBox.AlternationCount>
 							</ListBox>
-							<Button Name="pCloseButton2" Content="X" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" HorizontalAlignment="Right" Margin="0,5,5,5" Height="18" Width="22" Grid.Row="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+							<Button Name="pCloseButton2" Content="X" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" HorizontalAlignment="Right" Margin="0,5,9,5" Height="18" Width="22" Grid.Row="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
 							<StackPanel Name="ButtonStackPanel2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Grid.Row="3" Margin="0,10,0,10">
 								<Button Name="btnOK2" Content="OK" Margin="5,10,5,10" Background="#111111" Foreground="#EEEEEE" Width="75" Height="25" Template="{StaticResource NoMouseOverButtonTemplate}"/>
 							</StackPanel>
@@ -1586,6 +1591,7 @@ function Show-SubnetPopup {
 	$ScanPanel.Visibility = 'Collapsed'
 	$ResultsList.Visibility = 'Collapsed'
 	$imgPortScan.Visibility = 'Collapsed'
+	$subnetIcon.Visibility = 'Visible'
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
 	$PopupCanvas2.Visibility = 'Visible'
@@ -1598,6 +1604,7 @@ function Show-PortScanPopup {
 	$ScanPanel.Visibility = 'Visible'
 	$ResultsList.Visibility = 'Visible'
 	$imgPortScan.Visibility = 'Visible'
+	$subnetIcon.Visibility = 'Collapsed'
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
 	$PopupCanvas2.Visibility = 'Visible'
@@ -1713,7 +1720,8 @@ $icons = @(
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"},
 	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"},
-	@{File = 'C:\Windows\System32\imageres.dll'; Index = 229; ElementName = "btnReset"; Type = "Button"}
+	@{File = 'C:\Windows\System32\imageres.dll'; Index = 229; ElementName = "btnReset"; Type = "Button"},
+	@{File = 'C:\Windows\System32\setupapi.dll'; Index = 5; ElementName = "subnetIcon"; Type = "Image"}
 )
 
 # Extract and set icons
