@@ -357,7 +357,7 @@ function processVendors {
 						}
 					}
 					Start-Sleep -Milliseconds 50
-				} while ($vendorTasks.Count -ge 5)
+				} while ($vendorTasks.Count -ge 12)
 			}
 		}
 
@@ -443,7 +443,7 @@ function processHostnames {
 						}
 					}
 					Start-Sleep -Milliseconds 50
-				} while ($hostnameTasks.Count -ge 5)
+				} while ($hostnameTasks.Count -ge 10)
 			}
 		}
 
