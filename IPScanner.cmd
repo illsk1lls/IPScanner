@@ -1152,7 +1152,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								<TextBlock Name="pHost" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Margin="15,0,0,0"/>
 								<StackPanel Orientation="Horizontal">
 									<TextBlock Name="pIP" FontSize="14" Foreground="#EEEEEE" Margin="15,2,5,2" />
-									<Button Name="btnPortScan" Width="13" Height="13" ToolTip="Scan Ports" Margin="3,1,10,0" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="True" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+									<Button Name="btnPortScan" Width="13" Height="13" ToolTip="Scan Ports" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="True" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
 										<Button.Effect>
 											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
 										</Button.Effect>
@@ -1171,6 +1171,9 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 										<Button.RenderTransform>
 											<TranslateTransform/>
 										</Button.RenderTransform>
+										<Viewbox Width="13" Height="13">
+											<Path Fill="#FF00BFFF" Data="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+										</Viewbox>
 									</Button>
 								</StackPanel>
 								<TextBlock Name="pMAC" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
@@ -1462,7 +1465,20 @@ $Main.Add_Closing({
 	})
 })
 
-$Main.Add_Loaded({
+$Main.Add_ContentRendered({
+	# Populate the ComboBoxes
+	function Initialize-IPCombo {
+		param($comboBox)
+		for ($i = 0; $i -le 255; $i++) {
+			$comboBox.Items.Add($i)
+		}
+		$comboBox.SelectedIndex = 0
+	}
+
+	# Initialize Comboboxes
+	@('subnetOctet1', 'subnetOctet2', 'subnetOctet3') | ForEach-Object {
+		Initialize-IPCombo -comboBox ($Main.FindName($_))
+	}
 	$Main.Dispatcher.Invoke([action]{
 		$Main.Activate()
 	}, [Windows.Threading.DispatcherPriority]::Background)
@@ -1679,8 +1695,7 @@ $icons = @(
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"},
 	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"},
-	@{File = 'C:\Windows\System32\imageres.dll'; Index = 229; ElementName = "btnReset"; Type = "Button"},
-	@{File = 'C:\Windows\System32\imageres.dll'; Index = 168; ElementName = "btnPortScan"; Type = "Button"}
+	@{File = 'C:\Windows\System32\imageres.dll'; Index = 229; ElementName = "btnReset"; Type = "Button"}
 )
 
 # Extract and set icons
@@ -1703,8 +1718,8 @@ foreach ($icon in $icons) {
 				$element.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 			}
 			"Button" {
-				$imageWidth = if($icon.ElementName -eq "btnReset"){16} elseif($icon.ElementName -eq "btnPortScan"){13} else {24}
-				$imageHeight = if($icon.ElementName -eq "btnReset"){16} elseif($icon.ElementName -eq "btnPortScan"){13} else {24}
+				$imageWidth = if($icon.ElementName -eq "btnReset"){16} else {24}
+				$imageHeight = if($icon.ElementName -eq "btnReset"){16}  else {24}
 				$image = New-Object System.Windows.Controls.Image -Property @{
 					Source = $bitmapSource;
 					Width = $imageWidth;
@@ -1716,20 +1731,6 @@ foreach ($icon in $icons) {
 			}
 		}
 	}
-}
-
-# Populate the ComboBoxes
-function Initialize-IPCombo {
-	param($comboBox)
-	for ($i = 0; $i -le 255; $i++) {
-		$comboBox.Items.Add($i)
-	}
-	$comboBox.SelectedIndex = 0
-}
-
-# Initialize Comboboxes
-@('subnetOctet1', 'subnetOctet2', 'subnetOctet3') | ForEach-Object {
-	Initialize-IPCombo -comboBox ($Main.FindName($_))
 }
 
 $ChangeSubnet.Add_Click({
