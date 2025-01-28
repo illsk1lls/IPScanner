@@ -47,6 +47,15 @@ if (-not $singleInstance){
 	Exit
 }
 
+# Check if .NET Framework version is at least 3.0, which is required for WPF applications
+$frameworks = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse | Get-ItemProperty -Name Version -EA 0 | Where-Object { $_.PSChildName -Match '^(?!S)\p{L}'} | Select-Object -ExpandProperty Version
+$highestVersion = $frameworks | ForEach-Object { [version]$_ } | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+if ($highestVersion -lt [version]'3.0') {
+	$dotnetchecker = New-Object -ComObject Wscript.Shell
+	$dotnetchecker.Popup("dotNET 3.0 or higher is required!",0,'ERROR:',0x0) | Out-Null
+	Exit
+}
+
 # GUI Main Dispatcher
 function Update-uiMain(){
 	$Main.Dispatcher.Invoke([Windows.Threading.DispatcherPriority]::Background, [action]{})
@@ -507,7 +516,7 @@ function CheckConnectivity {
 		[string]$selectedhost
 	)
 	# Disable all buttons for 'This Device'
-	if ($selectedhost -match "\s\(This Device\)(?=\s|$)") {
+	if ($selectedhost -match $internalIP) {
 		@('btnRDP', 'btnWebInterface', 'btnShare') | ForEach-Object {
 			Get-Variable $_ -ValueOnly | ForEach-Object {
 				$_.IsEnabled = $false
@@ -535,7 +544,7 @@ function CheckConnectivity {
 	}
 	$results = @{}
 	foreach ($protocol in $ports.Keys) {
-		$results[$protocol] = Test-Port -computer $tryToConnect -port $ports[$protocol] -timeout 250
+		$results[$protocol] = Test-Port -computer $tryToConnect -port $ports[$protocol] -timeout 200
 	}
 
 	# Update button states based on connectivity results
@@ -1990,12 +1999,7 @@ $hostNameColumn = ($listView.View.Columns | Where-Object {$_.Header -eq "Host Na
 
 $listView.Add_MouseDoubleClick({
 	if($listView.SelectedItems.Count -gt 0){
-		if($listView.SelectedItems.HostName -ne 'Unable to Resolve'){
-			$selectedHost = $listView.SelectedItems.HostName
-		} else {
-			$selectedHost = $listView.SelectedItems.IPaddress
-		}
-		CheckConnectivity -selectedhost "$selectedHost"
+		CheckConnectivity -selectedhost $listView.SelectedItems.IPaddress
 		$selectedItem = $listView.SelectedItems[0]
 		$pMAC.Text = "MAC: " + $selectedItem.MACaddress
 		$pVendor.Text = "Vendor: " + $selectedItem.Vendor
