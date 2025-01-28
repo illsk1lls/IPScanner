@@ -475,6 +475,32 @@ function processHostnames {
 	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
 
+# Portscan
+function Test-Port {
+	param (
+		[string]$computer,
+		[int]$port,
+		[int]$timeout = 5
+	)
+	$tcp = New-Object System.Net.Sockets.TcpClient
+	try {
+		$result = $tcp.BeginConnect($computer, $port, $null, $null)
+		$success = $result.AsyncWaitHandle.WaitOne($timeout, $true)
+		if ($success) {
+			return "Port`: $port is open"
+		}
+		else {
+			return $null
+		}
+	}
+	catch {
+		return $null
+	}
+	finally {
+		$tcp.Close()
+	}
+}
+
 # Check common ports
 function CheckConnectivity {
 	param (
@@ -509,7 +535,7 @@ function CheckConnectivity {
 	}
 	$results = @{}
 	foreach ($protocol in $ports.Keys) {
-		$results[$protocol] = Test-Port -computer $tryToConnect -port $ports[$protocol]
+		$results[$protocol] = Test-Port -computer $tryToConnect -port $ports[$protocol] -timeout 250
 	}
 
 	# Update button states based on connectivity results
@@ -537,31 +563,6 @@ function CheckConnectivity {
 	# Show ping response status in popup window
 	$pingStatusImage.Content = if ($selectedItem.Ping) { Create-GradientEllipse -isPingSuccessful $true -width 12 -height 12 } else { Create-GradientEllipse -isPingSuccessful $false -width 12 -height 12 }
 	$pingStatusText.Text = if ($selectedItem.Ping) { "ICMP response received" } else { "No ICMP response received" }
-}
-
-# Portscan
-function Test-Port {
-	param (
-		[string]$computer,
-		[int]$port
-	)
-	$tcp = New-Object System.Net.Sockets.TcpClient
-	try {
-		$result = $tcp.BeginConnect($computer, $port, $null, $null)
-		$success = $result.AsyncWaitHandle.WaitOne(5, $true)
-		if ($success) {
-			return "Port`: $port is open"
-		}
-		else {
-			return $null
-		}
-	}
-	catch {
-		return $null
-	}
-	finally {
-		$tcp.Close()
-	}
 }
 
 # Listview column sort logic
@@ -1320,8 +1321,15 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								<RowDefinition Height="*"/>
 								<RowDefinition Height="Auto"/>
 							</Grid.RowDefinitions>
-							<TextBlock Name="PopupTitle2" HorizontalAlignment="Center" Margin="0,15,0,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Grid.Row="0"/>
-							<TextBlock Name="PopupText2" TextWrapping="Wrap" Margin="10,60,10,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Top" HorizontalAlignment="Center" Grid.Row="1" Visibility="Collapsed"/>
+							<StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,15,0,0" Visibility="Visible">
+								<Path Name="imgPortScan" Grid.Row="0" Width="24" Height="24" Margin="0,-1,5,0" Fill="#FF00BFFF" Data="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" Visibility="Visible">
+									<Path.Effect>
+										<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+									</Path.Effect>
+								</Path>
+								<TextBlock Name="PopupTitle2" HorizontalAlignment="Center"  FontSize="14" Foreground="#EEEEEE" FontWeight="Bold"/>
+							</StackPanel>
+							<TextBlock Name="PopupText2" TextWrapping="Wrap" Margin="10,45,10,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Top" HorizontalAlignment="Center" Grid.Row="1" Visibility="Collapsed"/>
 							<StackPanel Name="SubnetInput" Grid.Row="1" Margin="10,55,10,0" Visibility="Collapsed">
 								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
 									<TextBlock Text="Subnet" FontSize="14" Foreground="#EEEEEE" Margin="-7,2,5,5"/>
@@ -1568,6 +1576,7 @@ function Show-SubnetPopup {
 	$SubnetInput.Visibility = 'Visible'
 	$ScanPanel.Visibility = 'Collapsed'
 	$ResultsList.Visibility = 'Collapsed'
+	$imgPortScan.Visibility = 'Collapsed'
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
 	$PopupCanvas2.Visibility = 'Visible'
@@ -1575,10 +1584,11 @@ function Show-SubnetPopup {
 
 function Show-PortScanPopup {
 	$btnOK2.Visibility = 'Collapsed'
-	$PopupTitle2.Text = "Probe - $global:target"
+	$PopupTitle2.Text = "$global:target"
 	$SubnetInput.Visibility = 'Collapsed'
 	$ScanPanel.Visibility = 'Visible'
 	$ResultsList.Visibility = 'Visible'
+	$imgPortScan.Visibility = 'Visible'
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
 	$PopupCanvas2.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
 	$PopupCanvas2.Visibility = 'Visible'
