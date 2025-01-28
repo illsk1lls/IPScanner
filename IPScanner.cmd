@@ -1570,20 +1570,6 @@ $Main.Add_Closing({
 })
 
 $Main.Add_ContentRendered({
-	# Populate the ComboBoxes
-	function Initialize-IPCombo {
-		param($comboBox)
-		for ($i = 0; $i -le 255; $i++) {
-			$comboBox.Items.Add($i)
-		}
-		$comboBox.SelectedIndex = 0
-	}
-
-	# Initialize Comboboxes
-	@('subnetOctet1', 'subnetOctet2', 'subnetOctet3') | ForEach-Object {
-		Initialize-IPCombo -comboBox ($Main.FindName($_))
-	}
-
 	# Define icons
 	$icons = @(
 		@{File = 'C:\Windows\System32\imageres.dll'; Index = 73; ElementName = "scanAdminIcon"; Type = "Image"},
@@ -1618,6 +1604,20 @@ $Main.Add_ContentRendered({
 				}
 			}
 		}
+	}
+
+	# Populate the ComboBoxes
+	function Initialize-IPCombo {
+		param($comboBox)
+		for ($i = 0; $i -le 255; $i++) {
+			$comboBox.Items.Add($i)
+		}
+		$comboBox.SelectedIndex = 0
+	}
+
+	# Initialize Comboboxes
+	@('subnetOctet1', 'subnetOctet2', 'subnetOctet3') | ForEach-Object {
+		Initialize-IPCombo -comboBox ($Main.FindName($_))
 	}
 
 	# Bring window to foreground
