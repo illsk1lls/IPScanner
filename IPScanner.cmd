@@ -507,8 +507,8 @@ function CheckConnectivity {
 		[string]$selectedhost
 	)
 	# Disable all buttons for 'This Device'
-	if ($selectedhost -match ' (This Device)') {
-		@('btnRDP', 'btnWebInterface', 'btnShare', 'btnNone') | ForEach-Object {
+	if ($selectedhost -match "\s\(This Device\)(?=\s|$)") {
+		@('btnRDP', 'btnWebInterface', 'btnShare') | ForEach-Object {
 			Get-Variable $_ -ValueOnly | ForEach-Object {
 				$_.IsEnabled = $false
 				$_.Visibility = 'Collapsed'
