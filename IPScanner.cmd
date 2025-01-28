@@ -1583,6 +1583,44 @@ $Main.Add_ContentRendered({
 	@('subnetOctet1', 'subnetOctet2', 'subnetOctet3') | ForEach-Object {
 		Initialize-IPCombo -comboBox ($Main.FindName($_))
 	}
+
+	# Define icons
+	$icons = @(
+		@{File = 'C:\Windows\System32\imageres.dll'; Index = 73; ElementName = "scanAdminIcon"; Type = "Image"},
+		@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ElementName = "btnRDP"; Type = "Button"},
+		@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
+		@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"}
+	)
+
+	# Extract and set icons
+	foreach ($icon in $icons) {
+		$extractedIcon = [System.IconExtractor]::Extract($icon.File, $icon.Index, $true)
+		if ($extractedIcon) {
+			$bitmapSource = [System.IconExtractor]::IconToBitmapSource($extractedIcon)
+			$element = $Main.FindName($icon.ElementName)
+
+			switch ($icon.Type) {
+				"Image" {
+					$element.Source = $bitmapSource
+					$element.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+				}
+				"Button" {
+					$imageWidth = 24
+					$imageHeight = 24
+					$image = New-Object System.Windows.Controls.Image -Property @{
+						Source = $bitmapSource;
+						Width = $imageWidth;
+						Height = $imageHeight;
+						Stretch = [System.Windows.Media.Stretch]::Fill
+					}
+					$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+					$element.Content = $image
+				}
+			}
+		}
+	}
+
+	# Bring window to foreground
 	$Main.Dispatcher.Invoke([action]{
 		$Main.Activate()
 	}, [Windows.Threading.DispatcherPriority]::Background)
@@ -1771,48 +1809,15 @@ $btnScan.Add_Click({
 	$Scan.IsEnabled = $true
 })
 
-# Define icons
-$icons = @(
-	@{File = 'C:\Windows\System32\shell32.dll'; Index = 18; ElementName = "WindowIcon"; Type = "Window"},
-	@{File = 'C:\Windows\System32\imageres.dll'; Index = 73; ElementName = "scanAdminIcon"; Type = "Image"},
-	@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ElementName = "btnRDP"; Type = "Button"},
-	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
-	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"}
-)
-
-# Extract and set icons
-foreach ($icon in $icons) {
-	$extractedIcon = [System.IconExtractor]::Extract($icon.File, $icon.Index, $true)
-	if ($extractedIcon) {
-		$bitmapSource = [System.IconExtractor]::IconToBitmapSource($extractedIcon)
-		$element = $Main.FindName($icon.ElementName)
-
-		switch ($icon.Type) {
-			"Window" {
-				$Main.Icon = $bitmapSource
-				$Main.TaskbarItemInfo.Overlay = $bitmapSource
-				$Main.TaskbarItemInfo.Description = $AppId
-				($Main.FindName('WindowIconImage')).Source = $bitmapSource
-				($Main.FindName('WindowIconImage')).SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
-			}
-			"Image" {
-				$element.Source = $bitmapSource
-				$element.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
-			}
-			"Button" {
-				$imageWidth = 24
-				$imageHeight = 24
-				$image = New-Object System.Windows.Controls.Image -Property @{
-					Source = $bitmapSource;
-					Width = $imageWidth;
-					Height = $imageHeight;
-					Stretch = [System.Windows.Media.Stretch]::Fill
-				}
-				$image.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
-				$element.Content = $image
-			}
-		}
-	}
+# Window Icon
+$windowIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', 18, $true)
+if ($windowIcon) {
+    $bitmapSource = [System.IconExtractor]::IconToBitmapSource($windowIcon)
+    $Main.Icon = $bitmapSource
+    $Main.TaskbarItemInfo.Overlay = $bitmapSource
+    $Main.TaskbarItemInfo.Description = $AppId
+    ($Main.FindName('WindowIconImage')).Source = $bitmapSource
+    ($Main.FindName('WindowIconImage')).SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 }
 
 $ChangeSubnet.Add_Click({
