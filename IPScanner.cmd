@@ -1331,12 +1331,12 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								<RowDefinition Height="Auto"/>
 							</Grid.RowDefinitions>
 							<StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,15,0,0" Visibility="Visible">
-								<Image Name="subnetIcon" Width="32" Height="32" Margin="0,-17,2,0" Visibility="Collapsed">
-									<Image.Effect>
-										<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-									</Image.Effect>
-								</Image>
-								<Path Name="imgPortScan" Grid.Row="0" Width="24" Height="24" Margin="0,-1,5,0" Fill="#FF00BFFF" Data="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" Visibility="Visible">
+								<Path Name="subnetIcon" Grid.Row="0" Width="24" Height="24" Margin="0,-2,6,0" Fill="#FF00BFFF" Data="M10,2C8.89,2 8,2.89 8,4V7C8,8.11 8.89,9 10,9H11V11H2V13H6V15H5C3.89,15 3,15.89 3,17V20C3,21.11 3.89,22 5,22H9C10.11,22 11,21.11 11,20V17C11,15.89 10.11,15 9,15H8V13H16V15H15C13.89,15 13,15.89 13,17V20C13,21.11 13.89,22 15,22H19C20.11,22 21,21.11 21,20V17C21,15.89 20.11,15 19,15H18V13H22V11H13V9H14C15.11,9 16,8.11 16,7V4C16,2.89 15.11,2 14,2H10M10,4H14V7H10V4M5,17H9V20H5V17M15,17H19V20H15V17Z" Visibility="Collapsed">
+									<Path.Effect>
+										<DropShadowEffect ShadowDepth="3" BlurRadius="5" Color="Black" Direction="270"/>
+									</Path.Effect>
+								</Path>
+								<Path Name="imgPortScan" Grid.Row="0" Width="24" Height="24" Margin="0,-1,5,0" Fill="#FF00BFFF" Data="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" Visibility="Collapsed">
 									<Path.Effect>
 										<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
 									</Path.Effect>
@@ -1371,6 +1371,9 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 									<Button.RenderTransform>
 										<TranslateTransform/>
 									</Button.RenderTransform>
+								<Viewbox Width="19" Height="19">
+									<Path Fill="#FF00BFFF" Data="M19,8L15,12H18A6,6 0 0,1 12,18C11,18 10.03,17.75 9.2,17.3L7.74,18.76C8.97,19.54 10.43,20 12,20A8,8 0 0,0 20,12H23M6,12A6,6 0 0,1 12,6C13,6 13.97,6.25 14.8,6.7L16.26,5.24C15.03,4.46 13.57,4 12,4A8,8 0 0,0 4,12H1L5,16L9,12"/>
+								</Viewbox>
 								</Button>
 							</StackPanel>
 							<StackPanel Orientation="Horizontal" Grid.Row="1" Margin="10,5,10,5" HorizontalAlignment="Center" Visibility="Collapsed" Name="ScanPanel">
@@ -1719,9 +1722,7 @@ $icons = @(
 	@{File = 'C:\Windows\System32\mstscax.dll'; Index = 0; ElementName = "btnRDP"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 13; ElementName = "btnWebInterface"; Type = "Button"},
 	@{File = 'C:\Windows\System32\shell32.dll'; Index = 266; ElementName = "btnShare"; Type = "Button"},
-	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"},
-	@{File = 'C:\Windows\System32\imageres.dll'; Index = 229; ElementName = "btnReset"; Type = "Button"},
-	@{File = 'C:\Windows\System32\setupapi.dll'; Index = 5; ElementName = "subnetIcon"; Type = "Image"}
+	@{File = 'C:\Windows\System32\ieframe.dll'; Index = 75; ElementName = "btnNone"; Type = "Button"}
 )
 
 # Extract and set icons
@@ -1744,8 +1745,8 @@ foreach ($icon in $icons) {
 				$element.SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 			}
 			"Button" {
-				$imageWidth = if($icon.ElementName -eq "btnReset"){16} else {24}
-				$imageHeight = if($icon.ElementName -eq "btnReset"){16}  else {24}
+				$imageWidth = 24
+				$imageHeight = 24
 				$image = New-Object System.Windows.Controls.Image -Property @{
 					Source = $bitmapSource;
 					Width = $imageWidth;
