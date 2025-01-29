@@ -33,5 +33,5 @@ Right-Click anywhere in the main ListView window for Export options for the curr
 
 To clear the cached network peer list (ARP Cache) prior to running a scan, hold the **\[CTRL\]** key while clicking the Scan button<br>
 
-<sup align="center">**(Note: Clearing network peer cache requires Admin rights, while normal scanning/usage does not. A UAC prompt will be produced for this action if needed.)**<br>
+<sup align="center">**(Note: Clearing network peer cache requires Admin rights, while normal scanning/usage does not.)**<br>
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ClearARP.png?raw=true"></p>
