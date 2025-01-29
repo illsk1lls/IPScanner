@@ -9,11 +9,11 @@ For use with basic networks to get an up to date list of client: MAC Address, Ve
 
 External IP Address and Domain are also displayed in the titlebar after initiating a scan<br>
 
-Right click the scan button to change subnets
+Right click the scan button to change subnets<br>
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ScanContextSubnet.png?raw=true"></p>
 
-Double-clicking a listed item will give you a pop-up showing available connection options to that device.  Clickable buttons will appear for available options. 
+Double-clicking a listed item will give you a pop-up showing available connection options to that device.  Clickable buttons will appear for available options.<br>
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/DoubleClickPopup.png?raw=true"></p>
 
@@ -21,7 +21,11 @@ Right clicking the pop-up will produce CopyToClipboard options.<br>
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/CopyItemToClip.png?raw=true"></p>
 
-Right-Click anywhere in the ListView window for Export options of the current list. (HTML example export shown)
+Click the magnifying glass to the right of the IP Address on the popup to use the port scanner.<br>
+
+<p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/PortScan.png?raw=true"></p>
+
+Right-Click anywhere in the main ListView window for Export options for the current list. (HTML example export shown) <br>
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ContextMenuExport.png?raw=true"></p>
 
