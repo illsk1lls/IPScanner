@@ -31,5 +31,8 @@ Right-Click anywhere in the main ListView window for Export options for the curr
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/HTMLexample-export.png?raw=true"></p>
 
-**If you wish to clear your cached list of network peers (ARP Cache) prior to scanning the network, hold the \[CTRL\] key while clicking the Scan button<br>**
-**(Note: Clearing network peer cache requires Admin rights, while normal scanning/usage does not. A UAC prompt will be produced for this action if needed.)**
+To clear the cached network peer list (ARP Cache) prior to running a scan, hold the **\[CTRL\]** key while clicking the Scan button<br>
+
+<p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ClearARP.png?raw=true"></p>
+
+<sup align="center">**(Note: Clearing network peer cache requires Admin rights, while normal scanning/usage does not. A UAC prompt will be produced for this action if needed.)**<br>
