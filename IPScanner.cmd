@@ -300,7 +300,7 @@ function List-Machines {
 	$sortedItems | ForEach-Object { $listView.Items.Add($_) }
 	$listView.Items.Refresh()
 
-	if ($totalItems -ge 19) {
+	if ($totalItems -ge 21) {
 		$hostNameColumn.Width = 270
 	}
 	Update-uiMain
@@ -1222,7 +1222,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								</StackPanel>
 								<TextBlock Name="pMAC" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
 								<TextBlock Name="pVendor" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
-								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,35,0,0">
+								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,28,0,0">
 									<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
 										<Button.Effect>
 											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
