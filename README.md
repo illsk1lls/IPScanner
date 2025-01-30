@@ -5,7 +5,8 @@
 <p align="center"><sup align="center">This script will work as either a .CMD or .PS1 file.<br>
 (For ease of use it will be posted as a CMD file, as you can simply Double-Click it to launch)</sup></p>
 
-For use with basic networks to get an up to date list of client: MAC Address, Vendor, IP Address, and Hostnames<br>
+<p align="center">A fast scanner for use with basic networks, to get an up to date list of peer: MAC Address, Vendor, IP Address, and Hostnames<br>
+(Port scanning is also available)</p><br>
 
 External IP Address and Domain are also displayed in the titlebar after initiating a scan<br>
 
