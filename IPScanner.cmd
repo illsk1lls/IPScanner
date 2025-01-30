@@ -283,9 +283,10 @@ function List-Machines {
 	# Now add entries for successful pings not in ARP data, excluding the internal IP
 	$successfulPingsNotInARP = $global:successfulPings | Where-Object { $_ -notin $arpOutput.IPAddress -and $_ -ne $internalIP }
 	foreach ($ip in $successfulPingsNotInARP) {
+		$mac = [MacAddressResolver]::GetMacFromIP($ip)
 		$item = [pscustomobject]@{
-			'MACaddress' = 'No ARP Data';
-			'Vendor' = 'Unknown';
+			'MACaddress' = $mac;
+			'Vendor' = $vendor;
 			'IPaddress' = $ip;
 			'HostName' = 'Resolving...';
 			'Ping' = $true;
@@ -626,7 +627,47 @@ function Create-GradientEllipse {
 	return $ellipse
 }
 
-# get icons from DLL or EXE files via shell32.dll function calls
+# Direct MAC request via iphlpapi.dll
+Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public class MacAddressResolver
+{
+	[DllImport("iphlpapi.dll", ExactSpelling = true)]
+	public static extern int SendARP(uint DestIP, uint SrcIP, byte[] pMacAddr, ref int PhyAddrLen);
+
+	public static string GetMacFromIP(string ipAddress)
+	{
+		try
+		{
+			System.Net.IPAddress ip = System.Net.IPAddress.Parse(ipAddress);
+			byte[] macAddr = new byte[6];
+			int macAddrLen = macAddr.Length;
+			if (SendARP(BitConverter.ToUInt32(ip.GetAddressBytes(), 0), 0, macAddr, ref macAddrLen) == 0)
+			{
+				string[] str = new string[macAddr.Length];
+				for (int i = 0; i < macAddr.Length; i++)
+				{
+					str[i] = macAddr[i].ToString("X2");
+				}
+				return string.Join(":", str);
+			}
+			else
+			{
+				return "Unknown";
+			}
+		}
+		catch
+		{
+			return "Unknown";
+		}
+	}
+}
+"@
+
+# Get icons from DLL or EXE files via shell32.dll
 $getIcons = @"
 using System;
 using System.Drawing;
