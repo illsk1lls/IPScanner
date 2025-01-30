@@ -1677,6 +1677,16 @@ $pCloseButton.Add_MouseLeave({
 
 $pCloseButton2.Add_Click({
 	$PopupCanvas2.Visibility = 'Hidden'
+	if(-not $btnScan.IsEnabled){
+		$global:abortscan = $true
+		$ProgressText.Visibility = 'Collapsed'
+		$btnScan.Visibility = 'Visible'
+		$ProgressBar.Visibility = 'Collapsed'
+		$ProgressBar.Value = 0
+		Update-uiMain
+		$btnScan.IsEnabled = $true	
+		$Scan.IsEnabled = $true
+	}
 })
 
 $pCloseButton2.Add_MouseEnter({
@@ -1797,6 +1807,12 @@ $btnScan.Add_Click({
 			$progress = (($port - $startPort + 1) / $totalPorts) * 100
 			$ProgressBar.Value = $progress
 			Update-uiMain
+			if($abortscan){
+				$ResultsList.Items.Clear()
+				Update-uiMain
+				$global:abortscan = $false
+				break
+			}
 		}
 
 		if ($openPorts.Count -eq 0) {
