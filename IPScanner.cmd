@@ -352,7 +352,7 @@ function processVendors {
 				} while ($vendorTasks.Count -ge 10)
 			}
 		}
-		
+
 		# Process remaining tasks
 		while ($vendorTasks.Count -ge 1) {
 			# Process vendor tasks
@@ -373,7 +373,7 @@ function processVendors {
 				}
 			}
 			Start-Sleep -Milliseconds 50
-		} 
+		}
 
 		# Clean up jobs
 		Remove-Job -Job $vendorTasks.Values -Force
@@ -418,7 +418,7 @@ function processHostnames {
 				} while ($hostnameTasks.Count -ge 10)
 			}
 		}
-		
+
 		# Process remaining tasks
 		while ($hostnameTasks.Count -ge 1) {
 			# Process hostname tasks
@@ -438,7 +438,7 @@ function processHostnames {
 				}
 			}
 			Start-Sleep -Milliseconds 50
-		} 
+		}
 
 		# Clean up jobs
 		Remove-Job -Job $hostnameTasks.Values -Force
@@ -1350,7 +1350,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 										M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z
 									</Path.Data>
 								</Path>
-								<TextBlock Name="PopupTitle2" HorizontalAlignment="Center"  FontSize="14" Foreground="#EEEEEE" FontWeight="Bold"/>
+								<TextBlock Name="PopupTitle2" HorizontalAlignment="Center" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold"/>
 							</StackPanel>
 							<TextBlock Name="PopupText2" TextWrapping="Wrap" Margin="10,45,10,0" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Top" HorizontalAlignment="Center" Grid.Row="1" Visibility="Collapsed"/>
 							<StackPanel Name="SubnetInput" Grid.Row="1" Margin="10,55,10,0" Visibility="Collapsed">
@@ -1776,12 +1776,12 @@ $btnScan.Add_Click({
 # Window Icon
 $windowIcon = [System.IconExtractor]::Extract('C:\Windows\System32\shell32.dll', 18, $true)
 if ($windowIcon) {
-    $bitmapSource = [System.IconExtractor]::IconToBitmapSource($windowIcon)
-    $Main.Icon = $bitmapSource
-    $Main.TaskbarItemInfo.Overlay = $bitmapSource
-    $Main.TaskbarItemInfo.Description = $AppId
-    ($Main.FindName('WindowIconImage')).Source = $bitmapSource
-    ($Main.FindName('WindowIconImage')).SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+	$bitmapSource = [System.IconExtractor]::IconToBitmapSource($windowIcon)
+	$Main.Icon = $bitmapSource
+	$Main.TaskbarItemInfo.Overlay = $bitmapSource
+	$Main.TaskbarItemInfo.Description = $AppId
+	($Main.FindName('WindowIconImage')).Source = $bitmapSource
+	($Main.FindName('WindowIconImage')).SetValue([System.Windows.Media.RenderOptions]::BitmapScalingModeProperty, [System.Windows.Media.BitmapScalingMode]::HighQuality)
 }
 
 $ChangeSubnet.Add_Click({
@@ -2143,43 +2143,44 @@ $Main.Add_KeyUp({
 
 # Wait for background jobs to finish with progress tracking
 function TrackProgress {
-    $totalItems = $listView.Items.Count
-    $completedItems = 0
-    $previousCompletedItems = -1  # Initialize to a value that will always differ from $completedItems on first check
+	$totalItems = $listView.Items.Count
+	$completedItems = 0
+	# Initialize to a value that will always differ from $completedItems on first check
+	$previousCompletedItems = -1
 
-    do {
-        # Count items with both HostName and Vendor resolved
-        $completedItems = ($listView.Items | Where-Object {
-            $_.HostName -ne "Resolving..." -and
-            $_.Vendor -ne "Identifying..."
-        }).Count
+	do {
+		# Count items with both HostName and Vendor resolved
+		$completedItems = ($listView.Items | Where-Object {
+			$_.HostName -ne "Resolving..." -and
+			$_.Vendor -ne "Identifying..."
+		}).Count
 
-        # Check if the number of completed items has changed
-        if ($completedItems -ne $previousCompletedItems) {
-            # Update UI with the new progress
-            $completedPercentage = if ($totalItems -gt 0) {
-                ($completedItems / $totalItems) * 100
-            } else {
-                0
-            }
-            Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
-            
-            # Refresh ListView to show changes
-            $listView.Items.Refresh()
-            Update-uiMain
-            
-            # Update the previous count for the next iteration
-            $previousCompletedItems = $completedItems
-        } else {
-            # If no change, we still want to update the UI occasionally to show that the process is ongoing
-            if ($completedItems -lt $totalItems) {
-                Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
-            }
-        }
+		# Check if the number of completed items has changed
+		if ($completedItems -ne $previousCompletedItems) {
+			# Update UI with the new progress
+			$completedPercentage = if ($totalItems -gt 0) {
+				($completedItems / $totalItems) * 100
+			} else {
+				0
+			}
+			Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
 
-        # Short sleep to not overload the system
-        Start-Sleep -Milliseconds 5
-    } while ($completedItems -lt $totalItems)
+			# Refresh ListView to show changes
+			$listView.Items.Refresh()
+			Update-uiMain
+
+			# Update the previous count for the next iteration
+			$previousCompletedItems = $completedItems
+		} else {
+			# If no change, update the UI occasionally to show that the process is ongoing
+			if ($completedItems -lt $totalItems) {
+				Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
+			}
+		}
+
+		# Short sleep to not overload the system
+		Start-Sleep -Milliseconds 5
+	} while ($completedItems -lt $totalItems)
 }
 
 # Ensure clean ListView
