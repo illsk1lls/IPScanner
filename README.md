@@ -24,6 +24,6 @@ External IP Address and Domain are also displayed in the titlebar after initiati
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ContextMenuExport.png?raw=true"></p>
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/HTMLexample-export.png?raw=true"></p><br>
 
-<p align="center">To clear the cached network peer list (ARP Cache), hold the **\[CTRL\]** key. The Scan button will change.</p>
+To clear the cached network peer list (ARP Cache), **hold the \[CTRL\] key**. The Scan button will change.
 <p align="center"><sup>**(Note: Clearing network peer cache requires Admin rights, while normal scanning/usage does not.)**</sup></p>
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ClearARP.png?raw=true"></p>
