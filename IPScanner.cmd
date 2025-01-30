@@ -1871,13 +1871,14 @@ $btnOK2.Add_Click({
 	if ($SubnetInput.Visibility -eq 'Visible') {
 		$global:gatewayPrefix = "{0}.{1}.{2}." -f $subnetOctet1.SelectedItem, $subnetOctet2.SelectedItem, $subnetOctet3.SelectedItem
 	}
+	$global:CtrlIsDown = $false
 	if ($global:gatewayPrefix -ne $originalGatewayPrefix) {
-		$scanButtonText.Text = 'Custom Scan'
+			$scanButtonText.Text = 'Custom Scan'
 	} else {
 		$scanButtonText.Text = 'Scan'
 	}
+	$scanAdminIcon.Visibility = 'Collapsed'
 	$PopupCanvas2.Visibility = 'Hidden'
-
 })
 
 $btnOK2.Add_MouseEnter({
