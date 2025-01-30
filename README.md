@@ -5,8 +5,8 @@
 (For ease of use it will be posted as a CMD file, as you can simply Double-Click it to launch)</sup></p>
 
 <p align="center">A lightweight, fast network scanner, for use with basic networks.</p>
-<p align="center">Get an up to date list of peer: MAC Address, Vendor, IP Address, and Hostnames</p>
-<p align="center"><sup>External IP Address and Domain are also displayed in the titlebar after initiating a scan</sup></p><br>
+Get an up to date list of peer: MAC Address, Vendor, IP Address, and Hostnames
+External IP Address and Domain are also displayed in the titlebar after initiating a scan
 
 <p align="center">Right click the scan button to change subnets</p>
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ScanContextSubnet.png?raw=true"></p><br>
