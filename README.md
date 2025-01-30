@@ -4,7 +4,7 @@
 <p align="center"><sup>This script will work as either a .CMD or .PS1 file.<br>
 (For ease of use it will be posted as a CMD file, as you can simply Double-Click it to launch)</sup></p><br>
 
-A lightweight, fast network scanner, for use with basic networks.<br>
+A lightweight, fast, network scanner, for use with basic networks.<br>
 Get an up to date list of peer: MAC Address, Vendor, IP Address, and Hostnames<br>
 External IP Address and Domain are also displayed in the titlebar after initiating a scan<br><br>
 
