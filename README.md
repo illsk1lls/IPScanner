@@ -4,9 +4,9 @@
 <p align="center"><sup>This script will work as either a .CMD or .PS1 file.<br>
 (For ease of use it will be posted as a CMD file, as you can simply Double-Click it to launch)</sup></p><br>
 
-<p style="text-align: center;">A lightweight, fast, network scanner, for use with basic networks.<br>
-Get an up to date list of peer: MAC Address, Vendor, IP Address, and Hostnames<br>
-External IP Address and Domain are also displayed in the titlebar after initiating a scan</p><br><br>
+<p align="center">A lightweight, fast, network scanner, for use with basic networks.</p><br>
+<p align="center">Get an up to date list of peer: MAC Address, Vendor, IP Address, and Hostnames</p><br>
+<p align="center">External IP Address and Domain are also displayed in the titlebar after initiating a scan</p><br><br>
 
 <p align="center">Right click the scan button to change subnets</p>
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ScanContextSubnet.png?raw=true"></p><br><br>
