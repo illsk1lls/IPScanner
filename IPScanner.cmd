@@ -2179,36 +2179,23 @@ $Main.Add_KeyUp({
 
 # Wait for background jobs to finish with progress tracking
 function TrackProgress {
-	$totalJobs = (($listView.Items.Count - 2) * 2)
-	$completedJobs = 0
+    $totalItems = $listView.Items.Count
+    $completedItems = 0
 
-	do {
-		$hostJobsLeft = 0
-		$vendorJobsLeft = 0
+    do {
+        $completedItems = ($listView.Items | Where-Object { 
+            $_.HostName -ne "Resolving..." -and 
+            $_.Vendor -ne "Identifying..."
+        }).Count
 
-		foreach ($item in $listView.Items) {
-			if ($item.HostName -eq "Resolving...") {
-				$hostJobsLeft++
-			} else {
-				$completedJobs++
-			}
-			if ($item.Vendor -eq "Identifying...") {
-				$vendorJobsLeft++
-			} else {
-				if ($item.HostName -ne "Resolving...") {
-					$completedJobs++
-				}
-			}
-		}
-
-		# Adjust completedJobs to avoid double-counting
-		$completedJobs = [math]::Floor($completedJobs / 2)
-		$completedPercentage = if ($totalJobs -gt 0) { ($completedJobs / $totalJobs) * 100 } else { 0 }
-		Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
-		if (($hostJobsLeft + $vendorJobsLeft) -ge 1) {
-			Start-Sleep -Milliseconds 225
-		}
-	} while (($hostJobsLeft + $vendorJobsLeft) -ge 1)
+        $completedPercentage = if ($totalItems -gt 0) { 
+            ($completedItems / $totalItems) * 100 
+        } else { 
+            0 
+        }
+        Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
+        Start-Sleep -Milliseconds 50
+    } while ($completedItems -lt $totalItems)
 }
 
 # Ensure clean ListView
