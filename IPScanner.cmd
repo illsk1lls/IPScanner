@@ -309,12 +309,7 @@ function List-Machines {
 # Background Vendor lookup
 function processVendors {
 	$vendorLookupThread = [powershell]::Create().AddScript({
-		param ($Main, $listView, $internalIP)
-
-		function Update-uiBackground{
-			param($action)
-			$Main.Dispatcher.Invoke([action]$action, [Windows.Threading.DispatcherPriority]::Background)
-		}
+		param ($listView, $internalIP)
 
 		$vendorTasks = @{}
 
@@ -336,7 +331,7 @@ function processVendors {
 				} -ArgumentList $mac
 				$vendorTasks[$ip] = $vendorTask
 				do {
-					# Process vendor tasks
+					# Limit maximum vendor tasks and process
 					foreach ($ipCheck in @($vendorTasks.Keys)) {
 						if ($vendorTasks[$ipCheck].State -eq "Completed") {
 							$result = Receive-Job -Job $vendorTasks[$ipCheck]
@@ -347,55 +342,43 @@ function processVendors {
 							}
 							foreach ($it in $listView.Items) {
 								if ($it.IPaddress -eq $ipCheck) {
-									Update-uiBackground{
-										$it.Vendor = $vendorResult
-										$listView.Items.Refresh()
-									}
+									$it.Vendor = $vendorResult
 								}
 							}
 							$vendorTasks.Remove($ipCheck)
 						}
 					}
 					Start-Sleep -Milliseconds 50
-				} while ($vendorTasks.Count -ge 5)
+				} while ($vendorTasks.Count -ge 10)
 			}
 		}
-
-		# Temp bugfix for unidentified runaway, last listitem background job always closes before returning a value
-		$lastItem = $listView.Items | Select-Object -Last 1
-		$lastIP = $lastItem.IPaddress
-		$lastMAC = $lastItem.MACaddress
-		# Check Vendor
-		if ($lastItem.Vendor -eq 'Identifying...' -or $lastItem.Vendor -eq 'Unable to Identify') {
-			# Manual vendor lookup for the last IP only if needed
-			$ProgressPreference = 'SilentlyContinue'
-			$lastVendor = (irm "https://www.macvendorlookup.com/api/v2/$($lastMAC.Replace(':','').Substring(0,6))" -Method Get)
-			$ProgressPreference = 'Continue'
-			$lastVendorResult = if ($lastVendor -and $lastVendor.Company) {
-				$lastVendor.Company.substring(0, [System.Math]::Min(35, $lastVendor.Company.Length))
-			} else {
-				'Unable to Identify'
-			}
-			Update-uiBackground{
-				$lastItem.Vendor = $lastVendorResult
-				$listView.Items.Refresh()
-			}
-		}
-
-		# Update any leftover orphans
-		foreach ($item in $listView.Items) {
-			if ($item.Vendor -eq 'Identifying...') {
-				Update-uiBackground{
-					$item.Vendor = 'Unable to Identify'
-					$listView.Items.Refresh()
+		
+		# Process remaining tasks
+		while ($vendorTasks.Count -ge 1) {
+			# Process vendor tasks
+			foreach ($ipCheck in @($vendorTasks.Keys)) {
+				if ($vendorTasks[$ipCheck].State -eq "Completed") {
+					$result = Receive-Job -Job $vendorTasks[$ipCheck]
+					$vendorResult = if ($result -and $result.Company) {
+						$result.Company.substring(0, [System.Math]::Min(35, $result.Company.Length))
+					} else {
+						'Unable to Identify'
+					}
+					foreach ($it in $listView.Items) {
+						if ($it.IPaddress -eq $ipCheck) {
+							$it.Vendor = $vendorResult
+						}
+					}
+					$vendorTasks.Remove($ipCheck)
 				}
 			}
-		}
+			Start-Sleep -Milliseconds 50
+		} 
 
 		# Clean up jobs
 		Remove-Job -Job $vendorTasks.Values -Force
 
-	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($internalIP)
+	}, $true).AddArgument($listView).AddArgument($internalIP)
 	$vendorLookupThread.RunspacePool = $RunspacePool
 	$vendorScan = $vendorLookupThread.BeginInvoke()
 }
@@ -403,12 +386,7 @@ function processVendors {
 # Process Hostnames
 function processHostnames {
 	$hostnameLookupThread = [powershell]::Create().AddScript({
-		param ($Main, $listView, $internalIP)
-
-		function Update-uiBackground{
-			param($action)
-			$Main.Dispatcher.Invoke([action]$action, [Windows.Threading.DispatcherPriority]::Background)
-		}
+		param ($listView, $internalIP)
 
 		$hostnameTasks = @{}
 
@@ -420,22 +398,16 @@ function processHostnames {
 				$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
 				$hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
 				do {
-					# Process hostname tasks
+					# Limit maximum hostname tasks and process
 					foreach ($ipCheck in @($hostnameTasks.Keys)) {
 						if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
 							$entry = $hostnameTasks[$ipCheck].Task.Result
 							foreach ($it in $listView.Items) {
 								if ($it.IPaddress -eq $ipCheck) {
 									if ([string]::IsNullOrEmpty($entry.HostName)) {
-										Update-uiBackground {
-											$it.HostName = "Unable to Resolve"
-											$listView.Items.Refresh()
-										}
+										$it.HostName = "Unable to Resolve"
 									} else {
-										Update-uiBackground {
-											$it.HostName = $entry.HostName
-											$listView.Items.Refresh()
-										}
+										$it.HostName = $entry.HostName
 									}
 								}
 							}
@@ -443,43 +415,35 @@ function processHostnames {
 						}
 					}
 					Start-Sleep -Milliseconds 50
-				} while ($hostnameTasks.Count -ge 5)
+				} while ($hostnameTasks.Count -ge 10)
 			}
 		}
-
-		# Temp bugfix for unidentified runaway, last listitem background job always closes before returning a value
-		$lastItem = $listView.Items | Select-Object -Last 1
-		$lastIP = $lastItem.IPaddress
-		$lastMAC = $lastItem.MACaddress
-		# Check HostName
-		if ($lastItem.HostName -eq 'Resolving...' -or $lastItem.HostName -eq 'Unable to Resolve') {
-			# Manual hostname lookup for the last IP only if needed
-			try {
-				$dnsEntry = [System.Net.Dns]::GetHostEntryAsync($lastIP).Result
-				$lastHostName = if ($dnsEntry.HostName) { $dnsEntry.HostName } else { 'Unable to Resolve' }
-			} catch {
-				$lastHostName = 'Unable to Resolve'
-			}
-			Update-uiBackground{
-				$lastItem.HostName = $lastHostName
-				$listView.Items.Refresh()
-			}
-		}
-
-		# Update any leftover orphans
-		foreach ($item in $listView.Items) {
-			if ($item.HostName -eq 'Resolving...') {
-				Update-uiBackground{
-					$item.HostName = 'Unable to Resolve'
-					$listView.Items.Refresh()
+		
+		# Process remaining tasks
+		while ($hostnameTasks.Count -ge 1) {
+			# Process hostname tasks
+			foreach ($ipCheck in @($hostnameTasks.Keys)) {
+				if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
+					$entry = $hostnameTasks[$ipCheck].Task.Result
+					foreach ($it in $listView.Items) {
+						if ($it.IPaddress -eq $ipCheck) {
+							if ([string]::IsNullOrEmpty($entry.HostName)) {
+								$it.HostName = "Unable to Resolve"
+							} else {
+								$it.HostName = $entry.HostName
+							}
+						}
+					}
+					$hostnameTasks.Remove($ipCheck)
 				}
 			}
-		}
+			Start-Sleep -Milliseconds 50
+		} 
 
 		# Clean up jobs
 		Remove-Job -Job $hostnameTasks.Values -Force
 
-	}, $true).AddArgument($Main).AddArgument($listView).AddArgument($internalIP)
+	}, $true).AddArgument($listView).AddArgument($internalIP)
 	$hostnameLookupThread.RunspacePool = $RunspacePool
 	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
@@ -2181,20 +2145,40 @@ $Main.Add_KeyUp({
 function TrackProgress {
     $totalItems = $listView.Items.Count
     $completedItems = 0
+    $previousCompletedItems = -1  # Initialize to a value that will always differ from $completedItems on first check
 
     do {
-        $completedItems = ($listView.Items | Where-Object { 
-            $_.HostName -ne "Resolving..." -and 
+        # Count items with both HostName and Vendor resolved
+        $completedItems = ($listView.Items | Where-Object {
+            $_.HostName -ne "Resolving..." -and
             $_.Vendor -ne "Identifying..."
         }).Count
 
-        $completedPercentage = if ($totalItems -gt 0) { 
-            ($completedItems / $totalItems) * 100 
-        } else { 
-            0 
+        # Check if the number of completed items has changed
+        if ($completedItems -ne $previousCompletedItems) {
+            # Update UI with the new progress
+            $completedPercentage = if ($totalItems -gt 0) {
+                ($completedItems / $totalItems) * 100
+            } else {
+                0
+            }
+            Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
+            
+            # Refresh ListView to show changes
+            $listView.Items.Refresh()
+            Update-uiMain
+            
+            # Update the previous count for the next iteration
+            $previousCompletedItems = $completedItems
+        } else {
+            # If no change, we still want to update the UI occasionally to show that the process is ongoing
+            if ($completedItems -lt $totalItems) {
+                Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
+            }
         }
-        Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
-        Start-Sleep -Milliseconds 50
+
+        # Short sleep to not overload the system
+        Start-Sleep -Milliseconds 5
     } while ($completedItems -lt $totalItems)
 }
 
