@@ -4,9 +4,9 @@
 <p align="center"><sup>This script will work as either a .CMD or .PS1 file.<br>
 (For ease of use it will be posted as a CMD file, as you can simply Double-Click it to launch)</sup></p><br>
 
-A lightweight, fast network scanner, for use with basic networks.
-Get an up to date list of peer: MAC Address, Vendor, IP Address, and Hostnames
-External IP Address and Domain are also displayed in the titlebar after initiating a scan
+A lightweight, fast network scanner, for use with basic networks.<br>
+Get an up to date list of peer: MAC Address, Vendor, IP Address, and Hostnames<br>
+External IP Address and Domain are also displayed in the titlebar after initiating a scan<br>
 
 <p align="center">Right click the scan button to change subnets</p>
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ScanContextSubnet.png?raw=true"></p><br>
@@ -24,6 +24,6 @@ External IP Address and Domain are also displayed in the titlebar after initiati
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ContextMenuExport.png?raw=true"></p>
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/HTMLexample-export.png?raw=true"></p><br>
 
-To clear the cached network peer list (ARP Cache), **hold the \[CTRL\] key**. The Scan button will change.
-<sup>**(Note: Clearing network peer cache requires Admin rights, while normal scanning/usage does not.)**</sup>
+To clear the cached network peer list (ARP Cache), **hold the \[CTRL\] key**. The Scan button will change.<br>
+<sup>**(Note: Clearing network peer cache requires Admin rights, while normal scanning/usage does not.)**</sup><br>
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/ClearARP.png?raw=true"></p>
