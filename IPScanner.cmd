@@ -176,13 +176,13 @@ function Get-HostInfo {
 	$getHostInfoThread.Dispose()
 }
 
-# Send packets across subnet
+# Send packets across subnet (progress values adjusted for proper display)
 function Scan-Subnet {
 		$progressCounter = 0
 
 		1..254 | ForEach-Object {
 			$progressCounter++
-			$percentComplete = [math]::Min([math]::Round(($progressCounter / 250) * 100), 100)
+			$percentComplete = [math]::Min([math]::Round(($progressCounter / 240) * 100), 100)
 			Test-Connection -ComputerName "$global:gatewayPrefix$_" -Count 1 -AsJob | Out-Null
 			if($percentComplete -ge 100){
 				Update-Progress -value $percentComplete -text "Listening"
