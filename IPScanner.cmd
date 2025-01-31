@@ -178,29 +178,23 @@ function Get-HostInfo {
 
 # Send packets across subnet
 function Scan-Subnet {
-	$scanSubnetScriptBlock = {
-		param (
-			[string]$gatewayPrefix
-		)
+		$progressCounter = 0
 
-		$pingAll = 1..254 | ForEach-Object {
-			"$gatewayPrefix$_"
+		1..254 | ForEach-Object {
+			$progressCounter++
+			$percentComplete = [math]::Min([math]::Round(($progressCounter / 250) * 100), 100)
+			Test-Connection -ComputerName "$global:gatewayPrefix$_" -Count 1 -AsJob | Out-Null
+			if($percentComplete -ge 100){
+				Update-Progress -value $percentComplete -text "Listening"
+			} else {
+				Update-Progress -value $percentComplete -text "Sending Packets"
+			}
 		}
-		Test-Connection -ComputerName $pingAll -Count 1 -AsJob | Out-Null
+
 		Get-Job | Wait-Job -ErrorAction Stop | Out-Null
 		$results = Get-Job | Receive-Job -ErrorAction Stop
-		$successfulPings = @($results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address)
+		$global:successfulPings = @($results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address)
 		Get-Job | Remove-Job -Force
-
-		return $successfulPings
-	}
-	$scanSubnetThread = [powershell]::Create().AddScript($scanSubnetScriptBlock)
-	$scanSubnetThread.RunspacePool = $RunspacePool
-	$scanSubnetThread.AddArgument($global:gatewayPrefix)
-	$scanSubnetAsync = $scanSubnetThread.BeginInvoke()
-	$scanSubnetAsync.AsyncWaitHandle.WaitOne()
-	$global:successfulPings = $scanSubnetThread.EndInvoke($scanSubnetAsync)
-	$scanSubnetThread.Dispose()
 }
 
 # Create peer list
@@ -1687,6 +1681,13 @@ $pCloseButton2.Add_Click({
 		$btnScan.IsEnabled = $true	
 		$Scan.IsEnabled = $true
 	}
+	$global:CtrlIsDown = $false
+	if ($global:gatewayPrefix -ne $originalGatewayPrefix) {
+			$scanButtonText.Text = 'Custom Scan'
+	} else {
+		$scanButtonText.Text = 'Scan'
+	}
+	$scanAdminIcon.Visibility = 'Collapsed'
 })
 
 $pCloseButton2.Add_MouseEnter({
