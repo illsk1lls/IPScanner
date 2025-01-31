@@ -331,7 +331,7 @@ function processVendors {
 						if ($vendorTasks[$ipCheck].State -eq "Completed") {
 							$result = Receive-Job -Job $vendorTasks[$ipCheck]
 							$vendorResult = if ($result -and $result.Company) {
-								$result.Company.substring(0, [System.Math]::Min(35, $result.Company.Length))
+								$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
 							} else {
 								'Unable to Identify'
 							}
@@ -355,7 +355,7 @@ function processVendors {
 				if ($vendorTasks[$ipCheck].State -eq "Completed") {
 					$result = Receive-Job -Job $vendorTasks[$ipCheck]
 					$vendorResult = if ($result -and $result.Company) {
-						$result.Company.substring(0, [System.Math]::Min(35, $result.Company.Length))
+						$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
 					} else {
 						'Unable to Identify'
 					}
