@@ -216,12 +216,14 @@ function List-Machines {
 	# Cycle through ARP table to populate initial ListView data and start async lookups
 	$totalItems = ($arpOutput.Count - 1)
 
-	# First, add all known ARP entries
+	# First, add all known ARP entries and hostnames
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
 		$mac = $line.LinkLayerAddress.Replace('-',':')
-		$name = if ($ip -eq $internalIP) {"$hostName (This Device)"} else {"Resolving..."}
-		$vendor = if ($ip -eq $internalIP) {$myVendor} else {"Identifying..."}
+		$quickNameLookup = ((Resolve-DnsName -Name $ip -DnsOnly -ErrorAction SilentlyContinue).NameHost)
+		if(-not $quickNameLookup){$quickNameLookup = 'Resolving...'}
+		$name = if ($ip -eq $internalIP) {"$hostName (This Device)"} else {"$quickNameLookup"}
+		$vendor = if ($ip -eq $internalIP) {$myVendor} else {'Identifying...'}
 
 		# Determine if the IP was pingable
 		$pingResult = $ip -in $global:successfulPings
@@ -378,69 +380,86 @@ function processVendors {
 	$vendorScan = $vendorLookupThread.BeginInvoke()
 }
 
-# Process Hostnames
+# Background Hostname Lookup
 function processHostnames {
-	$hostnameLookupThread = [powershell]::Create().AddScript({
-		param ($listView, $internalIP)
+    $hostnameLookupThread = [powershell]::Create().AddScript({
+        param ($listView, $internalIP)
 
-		$hostnameTasks = @{}
+        $hostnameTasks = @{}
+        $pingItems = @()
+        $nonPingItems = @()
 
-		# Process found devices
-		foreach ($item in $listView.Items) {
-			$ip = $item.IPaddress
-			$mac = $item.MACaddress
-			if ($ip -ne $internalIP) {
-				$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
-				$hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
-				do {
-					# Limit maximum hostname tasks and process
-					foreach ($ipCheck in @($hostnameTasks.Keys)) {
-						if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
-							$entry = $hostnameTasks[$ipCheck].Task.Result
-							foreach ($it in $listView.Items) {
-								if ($it.IPaddress -eq $ipCheck) {
-									if ([string]::IsNullOrEmpty($entry.HostName)) {
-										$it.HostName = "Unable to Resolve"
-									} else {
-										$it.HostName = $entry.HostName
-									}
-								}
-							}
-							$hostnameTasks.Remove($ipCheck)
-						}
-					}
-					Start-Sleep -Milliseconds 50
-				} while ($hostnameTasks.Count -ge 10)
-			}
-		}
+        # Separate items into pingable and non-pingable
+        foreach ($item in $listView.Items) {
+            if ($item.Ping -eq $true -and $item.IPaddress -ne $internalIP) {
+                $pingItems += $item
+            } elseif ($item.IPaddress -ne $internalIP) {
+                $nonPingItems += $item
+            }
+        }
 
-		# Process remaining tasks
-		while ($hostnameTasks.Count -ge 1) {
-			# Process hostname tasks
-			foreach ($ipCheck in @($hostnameTasks.Keys)) {
-				if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
-					$entry = $hostnameTasks[$ipCheck].Task.Result
-					foreach ($it in $listView.Items) {
-						if ($it.IPaddress -eq $ipCheck) {
-							if ([string]::IsNullOrEmpty($entry.HostName)) {
-								$it.HostName = "Unable to Resolve"
-							} else {
-								$it.HostName = $entry.HostName
-							}
-						}
-					}
-					$hostnameTasks.Remove($ipCheck)
-				}
-			}
-			Start-Sleep -Milliseconds 50
-		}
+        # Process pingable items first
+        foreach ($item in $pingItems) {
+            $ip = $item.IPaddress
+            $hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
+            $hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
+        }
 
-		# Clean up jobs
-		Remove-Job -Job $hostnameTasks.Values -Force
+        # Process pingable tasks
+        while ($hostnameTasks.Count -gt 0) {
+            # Process hostname tasks
+            foreach ($ipCheck in @($hostnameTasks.Keys)) {
+                if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
+                    $entry = $hostnameTasks[$ipCheck].Task.Result
+                    foreach ($it in $listView.Items) {
+                        if ($it.IPaddress -eq $ipCheck) {
+                            $it.HostName = if ([string]::IsNullOrEmpty($entry.HostName)) {
+                                "Unable to Resolve"
+                            } else {
+                                $entry.HostName
+                            }
+                        }
+                    }
+                    $hostnameTasks.Remove($ipCheck)
+                }
+            }
+            Start-Sleep -Milliseconds 50
+        }
 
-	}, $true).AddArgument($listView).AddArgument($internalIP)
-	$hostnameLookupThread.RunspacePool = $RunspacePool
-	$hostnameScan = $hostnameLookupThread.BeginInvoke()
+        # Clear the task dictionary before processing non-pingable items
+        $hostnameTasks.Clear()
+
+        # Process non-pingable items
+        foreach ($item in $nonPingItems) {
+            $ip = $item.IPaddress
+            $hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
+            $hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
+        }
+
+        # Process non-pingable tasks
+        while ($hostnameTasks.Count -gt 0) {
+            # Process hostname tasks
+            foreach ($ipCheck in @($hostnameTasks.Keys)) {
+                if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
+                    $entry = $hostnameTasks[$ipCheck].Task.Result
+                    foreach ($it in $listView.Items) {
+                        if ($it.IPaddress -eq $ipCheck) {
+                            $it.HostName = if ([string]::IsNullOrEmpty($entry.HostName)) {
+                                "Unable to Resolve"
+                            } else {
+                                $entry.HostName
+                            }
+                        }
+                    }
+                    $hostnameTasks.Remove($ipCheck)
+                }
+            }
+            Start-Sleep -Milliseconds 50
+        }
+
+    }, $true).AddArgument($listView).AddArgument($internalIP)
+    $hostnameLookupThread.RunspacePool = $RunspacePool
+    $hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
 
 # Portscan
