@@ -303,9 +303,14 @@ function List-Machines {
 	Update-uiMain
 }
 
-# Background Vendor lookup
+# Background Vendor Lookup
 function processVendors {
-	$vendorLookupThread = [powershell]::Create().AddScript({
+	$runspace = [runspacefactory]::CreateRunspace()
+	$runspace.Open()
+	$vendorLookup = [powershell]::Create()
+	$vendorLookup.Runspace = $runspace
+
+	$lookupBlock = {
 		param ($listView, $internalIP)
 
 		$vendorTasks = @{}
@@ -319,7 +324,7 @@ function processVendors {
 					param($mac)
 					$ProgressPreference = 'SilentlyContinue'
 					$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
-					$ProgressPreference = 'SilentlyContinue'
+					$ProgressPreference = 'Continue'
 					if([string]::IsNullOrEmpty($response.Company)){
 						return $null
 					} else {
@@ -374,76 +379,110 @@ function processVendors {
 
 		# Clean up jobs
 		Remove-Job -Job $vendorTasks.Values -Force
+	}
 
-	}, $true).AddArgument($listView).AddArgument($internalIP)
-	$vendorLookupThread.RunspacePool = $RunspacePool
-	$vendorScan = $vendorLookupThread.BeginInvoke()
+	# Script block params
+	$null = $vendorLookup.AddScript($lookupBlock).AddArgument($listView).AddArgument($internalIP)
+
+	$asyncResult = $vendorLookup.BeginInvoke()
+
+	# Cleanup
+	$vendorLookup.EndInvoke($asyncResult)
+	$vendorLookup.Dispose()
+	$runspace.Close()
+	$runspace.Dispose()
 }
 
 # Background Hostname Lookup
 function processHostnames {
 	$hostnameLookupThread = [powershell]::Create().AddScript({
-		param ($listView, $internalIP)
+		param ($listView, $internalIP, $RunspacePool)
 
-		$hostnameTasks = @{}
 		$pingItems = @()
 		$nonPingItems = @()
-		$itemsByIP = @{}  # To cache items by IP for quick lookup
 
-		# Separate items into pingable and non-pingable, also cache items by IP
+		# Separate items into pingable and non-pingable
 		foreach ($item in $listView.Items) {
-			if ($item.IPaddress -ne $internalIP) {
-				$itemsByIP[$item.IPaddress] = $item
-				if ($item.Ping -eq $true) {
-					$pingItems += $item
-				} else {
-					$nonPingItems += $item
-				}
+			if ($item.Ping -eq $true -and $item.IPaddress -ne $internalIP) {
+				$pingItems += $item
+			} elseif ($item.IPaddress -ne $internalIP) {
+				$nonPingItems += $item
 			}
 		}
 
-		# Helper function to process tasks
-		function Process-Tasks {
-			param($tasks)
-			while ($tasks.Count -gt 0) {
-				foreach ($ipCheck in @($tasks.Keys)) {
-					if ($tasks[$ipCheck].Task.IsCompleted) {
-						$entry = $tasks[$ipCheck].Task.Result
-						$item = $itemsByIP[$ipCheck]
-						if ($item) {
-							$item.HostName = if ([string]::IsNullOrEmpty($entry.HostName)) {
-								"Unable to Resolve"
-							} else {
-								$entry.HostName
-							}
-						}
-						$tasks.Remove($ipCheck)
-					}
-				}
-				Start-Sleep -Milliseconds 10  # Reduced sleep time for better responsiveness
+		# DNS resolution with timeout
+		$resolveScript = {
+			param ($ip)
+			$dnsTask = [System.Net.Dns]::GetHostEntryAsync($ip)
+			$timeoutTask = [System.Threading.Tasks.Task]::Delay(3000)
+
+			$task = [System.Threading.Tasks.Task]::WhenAny($dnsTask, $timeoutTask)
+			$task.Wait()
+			$result = $task.Result
+
+			if ($result -eq $dnsTask -and $dnsTask.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion) {
+				return [PSCustomObject]@{IP = $ip; HostName = $dnsTask.Result.HostName}
+			} else {
+				return [PSCustomObject]@{IP = $ip; HostName = "Unable to Resolve"}
 			}
 		}
 
-		# Process pingable items first
+		# setup separate RunspacePool
+		$iss = [system.management.automation.runspaces.initialsessionstate]::CreateDefault()
+		$rsHost = [runspacefactory]::CreateRunspace($iss)
+		$rsHost.Open()
+		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $rsHost, $RunspacePool.ApartmentState)
+		$rsPool.Open()
+
+		# Start jobs - responses first
+		$jobs = @()
 		foreach ($item in $pingItems) {
-			$ip = $item.IPaddress
-			$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
-			$hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
+			$job = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress)
+			$job.RunspacePool = $rsPool
+			$jobHandle = $job.BeginInvoke()
+			$jobs += [PSCustomObject]@{
+				Pipeline = $job
+				Handle = $jobHandle
+				IP = $item.IPaddress
+			}
 		}
-		Process-Tasks $hostnameTasks
-
-		# Clear the task dictionary before processing non-pingable items
-		$hostnameTasks.Clear()
-
-		# Process non-pingable items
 		foreach ($item in $nonPingItems) {
-			$ip = $item.IPaddress
-			$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
-			$hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
+			$job = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress)
+			$job.RunspacePool = $rsPool
+			$jobHandle = $job.BeginInvoke()
+			$jobs += [PSCustomObject]@{
+				Pipeline = $job
+				Handle = $jobHandle
+				IP = $item.IPaddress
+			}
 		}
-		Process-Tasks $hostnameTasks
 
-	}, $true).AddArgument($listView).AddArgument($internalIP)
+		# Process jobs
+		while ($jobs.Count -gt 0) {
+			for ($i = $jobs.Count - 1; $i -ge 0; $i--) {
+				$job = $jobs[$i]
+				if ($job.Handle.IsCompleted) {
+					$result = $job.Pipeline.EndInvoke($job.Handle)
+					foreach ($it in $listView.Items) {
+						if ($it.IPaddress -eq $job.IP) {
+							$it.HostName = $result.HostName
+							break
+						}
+					}
+					$job.Pipeline.Dispose()
+					$jobs.RemoveAt($i)
+				}
+			}
+			Start-Sleep -Milliseconds 10
+		}
+
+		# Cleanup
+		$rsPool.Close()
+		$rsPool.Dispose()
+		$rsHost.Close()
+		$rsHost.Dispose()
+
+	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($RunspacePool)
 	$hostnameLookupThread.RunspacePool = $RunspacePool
 	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
