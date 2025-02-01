@@ -382,84 +382,70 @@ function processVendors {
 
 # Background Hostname Lookup
 function processHostnames {
-    $hostnameLookupThread = [powershell]::Create().AddScript({
-        param ($listView, $internalIP)
+	$hostnameLookupThread = [powershell]::Create().AddScript({
+		param ($listView, $internalIP)
 
-        $hostnameTasks = @{}
-        $pingItems = @()
-        $nonPingItems = @()
+		$hostnameTasks = @{}
+		$pingItems = @()
+		$nonPingItems = @()
+		$itemsByIP = @{}  # To cache items by IP for quick lookup
 
-        # Separate items into pingable and non-pingable
-        foreach ($item in $listView.Items) {
-            if ($item.Ping -eq $true -and $item.IPaddress -ne $internalIP) {
-                $pingItems += $item
-            } elseif ($item.IPaddress -ne $internalIP) {
-                $nonPingItems += $item
-            }
-        }
+		# Separate items into pingable and non-pingable, also cache items by IP
+		foreach ($item in $listView.Items) {
+			if ($item.IPaddress -ne $internalIP) {
+				$itemsByIP[$item.IPaddress] = $item
+				if ($item.Ping -eq $true) {
+					$pingItems += $item
+				} else {
+					$nonPingItems += $item
+				}
+			}
+		}
 
-        # Process pingable items first
-        foreach ($item in $pingItems) {
-            $ip = $item.IPaddress
-            $hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
-            $hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
-        }
+		# Helper function to process tasks
+		function Process-Tasks {
+			param($tasks)
+			while ($tasks.Count -gt 0) {
+				foreach ($ipCheck in @($tasks.Keys)) {
+					if ($tasks[$ipCheck].Task.IsCompleted) {
+						$entry = $tasks[$ipCheck].Task.Result
+						$item = $itemsByIP[$ipCheck]
+						if ($item) {
+							$item.HostName = if ([string]::IsNullOrEmpty($entry.HostName)) {
+								"Unable to Resolve"
+							} else {
+								$entry.HostName
+							}
+						}
+						$tasks.Remove($ipCheck)
+					}
+				}
+				Start-Sleep -Milliseconds 10  # Reduced sleep time for better responsiveness
+			}
+		}
 
-        # Process pingable tasks
-        while ($hostnameTasks.Count -gt 0) {
-            # Process hostname tasks
-            foreach ($ipCheck in @($hostnameTasks.Keys)) {
-                if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
-                    $entry = $hostnameTasks[$ipCheck].Task.Result
-                    foreach ($it in $listView.Items) {
-                        if ($it.IPaddress -eq $ipCheck) {
-                            $it.HostName = if ([string]::IsNullOrEmpty($entry.HostName)) {
-                                "Unable to Resolve"
-                            } else {
-                                $entry.HostName
-                            }
-                        }
-                    }
-                    $hostnameTasks.Remove($ipCheck)
-                }
-            }
-            Start-Sleep -Milliseconds 50
-        }
+		# Process pingable items first
+		foreach ($item in $pingItems) {
+			$ip = $item.IPaddress
+			$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
+			$hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
+		}
+		Process-Tasks $hostnameTasks
 
-        # Clear the task dictionary before processing non-pingable items
-        $hostnameTasks.Clear()
+		# Clear the task dictionary before processing non-pingable items
+		$hostnameTasks.Clear()
 
-        # Process non-pingable items
-        foreach ($item in $nonPingItems) {
-            $ip = $item.IPaddress
-            $hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
-            $hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
-        }
+		# Process non-pingable items
+		foreach ($item in $nonPingItems) {
+			$ip = $item.IPaddress
+			$hostTask = [System.Net.Dns]::GetHostEntryAsync($ip)
+			$hostnameTasks[$ip] = [PSCustomObject]@{Task = $hostTask; IP = $ip}
+		}
+		Process-Tasks $hostnameTasks
 
-        # Process non-pingable tasks
-        while ($hostnameTasks.Count -gt 0) {
-            # Process hostname tasks
-            foreach ($ipCheck in @($hostnameTasks.Keys)) {
-                if ($hostnameTasks[$ipCheck].Task.IsCompleted) {
-                    $entry = $hostnameTasks[$ipCheck].Task.Result
-                    foreach ($it in $listView.Items) {
-                        if ($it.IPaddress -eq $ipCheck) {
-                            $it.HostName = if ([string]::IsNullOrEmpty($entry.HostName)) {
-                                "Unable to Resolve"
-                            } else {
-                                $entry.HostName
-                            }
-                        }
-                    }
-                    $hostnameTasks.Remove($ipCheck)
-                }
-            }
-            Start-Sleep -Milliseconds 50
-        }
-
-    }, $true).AddArgument($listView).AddArgument($internalIP)
-    $hostnameLookupThread.RunspacePool = $RunspacePool
-    $hostnameScan = $hostnameLookupThread.BeginInvoke()
+	}, $true).AddArgument($listView).AddArgument($internalIP)
+	$hostnameLookupThread.RunspacePool = $RunspacePool
+	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
 
 # Portscan
