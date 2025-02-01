@@ -313,14 +313,14 @@ function processVendors {
 	$lookupBlock = {
 		param ($listView, $internalIP)
 
-		$vendorTasks = @{}
+		$vendorJobs = @{}
 
 		# Process found devices
 		foreach ($item in $listView.Items) {
 			$ip = $item.IPaddress
 			$mac = $item.MACaddress
 			if ($ip -ne $internalIP) {
-				$vendorTask = Start-Job -ScriptBlock {
+				$vendorJob = Start-Job -ScriptBlock {
 					param($mac)
 					$ProgressPreference = 'SilentlyContinue'
 					$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
@@ -331,12 +331,12 @@ function processVendors {
 						return $response
 					}
 				} -ArgumentList $mac
-				$vendorTasks[$ip] = $vendorTask
+				$vendorJobs[$ip] = $vendorJob
 				do {
 					# Limit maximum vendor tasks and process
-					foreach ($ipCheck in @($vendorTasks.Keys)) {
-						if ($vendorTasks[$ipCheck].State -eq "Completed") {
-							$result = Receive-Job -Job $vendorTasks[$ipCheck]
+					foreach ($ipCheck in @($vendorJobs.Keys)) {
+						if ($vendorJobs[$ipCheck].State -eq "Completed") {
+							$result = Receive-Job -Job $vendorJobs[$ipCheck]
 							$vendorResult = if ($result -and $result.Company) {
 								$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
 							} else {
@@ -347,20 +347,20 @@ function processVendors {
 									$it.Vendor = $vendorResult
 								}
 							}
-							$vendorTasks.Remove($ipCheck)
+							$vendorJobs.Remove($ipCheck)
 						}
 					}
 					Start-Sleep -Milliseconds 50
-				} while ($vendorTasks.Count -ge 5)
+				} while ($vendorJobs.Count -ge 5)
 			}
 		}
 
 		# Process remaining tasks
-		while ($vendorTasks.Count -ge 1) {
+		while ($vendorJobs.Count -ge 1) {
 			# Process vendor tasks
-			foreach ($ipCheck in @($vendorTasks.Keys)) {
-				if ($vendorTasks[$ipCheck].State -eq "Completed") {
-					$result = Receive-Job -Job $vendorTasks[$ipCheck]
+			foreach ($ipCheck in @($vendorJobs.Keys)) {
+				if ($vendorJobs[$ipCheck].State -eq "Completed") {
+					$result = Receive-Job -Job $vendorJobs[$ipCheck]
 					$vendorResult = if ($result -and $result.Company) {
 						$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
 					} else {
@@ -371,14 +371,14 @@ function processVendors {
 							$it.Vendor = $vendorResult
 						}
 					}
-					$vendorTasks.Remove($ipCheck)
+					$vendorJobs.Remove($ipCheck)
 				}
 			}
 			Start-Sleep -Milliseconds 50
 		}
 
 		# Clean up jobs
-		Remove-Job -Job $vendorTasks.Values -Force
+		Remove-Job -Job $vendorJobs.Values -Force
 	}
 
 	# Script block params
@@ -434,43 +434,43 @@ function processHostnames {
 		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $rsHost, $RunspacePool.ApartmentState)
 		$rsPool.Open()
 
-		# Start jobs - responses first
-		$jobs = @()
+		# Start hostNameJobs - responses first
+		$hostNameJobs = @()
 		foreach ($item in $pingItems) {
-			$job = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress)
-			$job.RunspacePool = $rsPool
-			$jobHandle = $job.BeginInvoke()
-			$jobs += [PSCustomObject]@{
-				Pipeline = $job
-				Handle = $jobHandle
+			$hostNameJob = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress)
+			$hostNameJob.RunspacePool = $rsPool
+			$hostNameJobHandle = $hostNameJob.BeginInvoke()
+			$hostNameJobs += [PSCustomObject]@{
+				Pipeline = $hostNameJob
+				Handle = $hostNameJobHandle
 				IP = $item.IPaddress
 			}
 		}
 		foreach ($item in $nonPingItems) {
-			$job = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress)
-			$job.RunspacePool = $rsPool
-			$jobHandle = $job.BeginInvoke()
-			$jobs += [PSCustomObject]@{
-				Pipeline = $job
-				Handle = $jobHandle
+			$hostNameJob = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress)
+			$hostNameJob.RunspacePool = $rsPool
+			$hostNameJobHandle = $hostNameJob.BeginInvoke()
+			$hostNameJobs += [PSCustomObject]@{
+				Pipeline = $hostNameJob
+				Handle = $hostNameJobHandle
 				IP = $item.IPaddress
 			}
 		}
 
-		# Process jobs
-		while ($jobs.Count -gt 0) {
-			for ($i = $jobs.Count - 1; $i -ge 0; $i--) {
-				$job = $jobs[$i]
-				if ($job.Handle.IsCompleted) {
-					$result = $job.Pipeline.EndInvoke($job.Handle)
+		# Process hostNameJobs
+		while ($hostNameJobs.Count -gt 0) {
+			for ($i = $hostNameJobs.Count - 1; $i -ge 0; $i--) {
+				$hostNameJob = $hostNameJobs[$i]
+				if ($hostNameJob.Handle.IsCompleted) {
+					$result = $hostNameJob.Pipeline.EndInvoke($hostNameJob.Handle)
 					foreach ($it in $listView.Items) {
-						if ($it.IPaddress -eq $job.IP) {
+						if ($it.IPaddress -eq $hostNameJob.IP) {
 							$it.HostName = $result.HostName
 							break
 						}
 					}
-					$job.Pipeline.Dispose()
-					$jobs.RemoveAt($i)
+					$hostNameJob.Pipeline.Dispose()
+					$hostNameJobs.RemoveAt($i)
 				}
 			}
 			Start-Sleep -Milliseconds 10
