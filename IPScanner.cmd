@@ -190,7 +190,7 @@ function Scan-Subnet {
 				Update-Progress -value $percentComplete -text "Sending Packets"
 			}
 		}
-
+		Update-Progress -value 100 -text "Listening"
 		Get-Job | Wait-Job -ErrorAction Stop | Out-Null
 		$results = Get-Job | Receive-Job -ErrorAction Stop
 		$global:successfulPings = @($results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address)
@@ -324,38 +324,40 @@ function processVendors {
 			$ip = $item.IPaddress
 			$mac = $item.MACaddress
 			if ($ip -ne $internalIP) {
-				$vendorJob = Start-Job -ScriptBlock {
-					param($mac)
-					$ProgressPreference = 'SilentlyContinue'
-					$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
-					$ProgressPreference = 'Continue'
-					if([string]::IsNullOrEmpty($response.Company)){
-						return $null
-					} else {
-						return $response
-					}
-				} -ArgumentList $mac
-				$vendorJobs[$ip] = $vendorJob
-				do {
-					# Limit maximum vendor tasks and process
-					foreach ($ipCheck in @($vendorJobs.Keys)) {
-						if ($vendorJobs[$ipCheck].State -eq "Completed") {
-							$result = Receive-Job -Job $vendorJobs[$ipCheck]
-							$vendorResult = if ($result -and $result.Company) {
-								$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
-							} else {
-								'Unable to Identify'
-							}
-							foreach ($it in $listView.Items) {
-								if ($it.IPaddress -eq $ipCheck) {
-									$it.Vendor = $vendorResult
-								}
-							}
-							$vendorJobs.Remove($ipCheck)
+				if($item.Vendor -eq 'Identifying...'){
+					$vendorJob = Start-Job -ScriptBlock {
+						param($mac)
+						$ProgressPreference = 'SilentlyContinue'
+						$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
+						$ProgressPreference = 'Continue'
+						if([string]::IsNullOrEmpty($response.Company)){
+							return $null
+						} else {
+							return $response
 						}
-					}
-					Start-Sleep -Milliseconds 50
-				} while ($vendorJobs.Count -ge 5)
+					} -ArgumentList $mac
+					$vendorJobs[$ip] = $vendorJob
+					do {
+						# Limit maximum vendor tasks and process
+						foreach ($ipCheck in @($vendorJobs.Keys)) {
+							if ($vendorJobs[$ipCheck].State -eq "Completed") {
+								$result = Receive-Job -Job $vendorJobs[$ipCheck]
+								$vendorResult = if ($result -and $result.Company) {
+									$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
+								} else {
+									'Unable to Identify'
+								}
+								foreach ($it in $listView.Items) {
+									if ($it.IPaddress -eq $ipCheck) {
+										$it.Vendor = $vendorResult
+									}
+								}
+								$vendorJobs.Remove($ipCheck)
+							}
+						}
+						Start-Sleep -Milliseconds 50
+					} while ($vendorJobs.Count -ge 5)
+				}
 			}
 		}
 
