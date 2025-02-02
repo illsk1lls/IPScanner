@@ -605,7 +605,7 @@ $listViewSortColumn = {
 		}
 	}
 
-	# Update ListView
+	# Update List
 	$Sender.Items.Clear()
 	$sortedItems | ForEach-Object { $Sender.Items.Add($_) }
 }
@@ -1185,7 +1185,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						<GridView>
 							<GridViewColumn Header="MAC Address" DisplayMemberBinding="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
 							<GridViewColumn Header="Vendor" DisplayMemberBinding="{Binding Vendor}" Width="230" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-							<GridViewColumn Header="IP Address" Width="190" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}">
+							<GridViewColumn Header="IP Address" Width="190" DisplayMemberBinding="{Binding IPaddress}" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}">
 								<GridViewColumn.CellTemplate>
 									<DataTemplate>
 										<StackPanel Orientation="Horizontal">
