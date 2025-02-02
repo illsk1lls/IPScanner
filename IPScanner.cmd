@@ -304,6 +304,8 @@ function List-Machines {
 	if ($totalItems -ge 21) {
 		$hostNameColumn.Width = 270
 	}
+	$global:totalCount = $listView.Items.Count
+	$TotalListed.Text = "$totalCount devices found"
 	Update-uiMain
 }
 
@@ -1222,6 +1224,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						</ContextMenu>
 					</ListView.ContextMenu>
 				</ListView>
+				<TextBlock Name="TotalListed" Foreground="{x:Static SystemColors.GrayTextBrush}" FontWeight="Normal" FontSize="11" Margin="58,453,0,0" HorizontalAlignment="Center"/>
 				<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
 					<Border Name="PopupBorder" CornerRadius="5" Width="350" Height="240" BorderThickness="0.70">
 						<Border.BorderBrush>
@@ -2043,6 +2046,7 @@ $ExportToHTML.Add_Click({
 		<p><strong>External IP:</strong> $global:externalIP</p>
 		<p><strong>Domain:</strong> $global:domain</p>
 		<p><strong>Date/Time:</strong> $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</p>
+		<p><strong>Total Devices:</strong> $global:totalCount</p>
 	</div>
 	<table>
 		<tr>
@@ -2087,10 +2091,9 @@ $ExportToCSV.Add_Click({
 		$path = $saveFileDialog.FileName
 		try {
 			# CSV header
-			$csvHeader = "External IP,Domain,Date/Time`r`n"
-			$csvHeader += "$global:externalIP,$global:domain,$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
+			$csvHeader = "MAC Address,Vendor,IP Address,Hostname"
 			$csvContent = $listView.Items | ForEach-Object {
-				"`r`n$($_.MACaddress),$($_.Vendor),$($_.IPaddress),$($_.HostName.Replace(' (This Device)',''))"
+				"`r`n$($_.MACaddress.Replace(',','')),$($_.Vendor.Replace(',','')),$($_.IPaddress.Replace(',','')),$($_.HostName.Replace(' (This Device)','').Replace(',',''))"
 			}
 			[System.IO.File]::WriteAllLines($path, ($csvHeader + $csvContent))
 			Show-Popup2 -Message 'Export to CSV completed successfully!' -Title 'Export:'
@@ -2113,9 +2116,10 @@ $ExportToText.Add_Click({
 			$textContent = @"
 NETWORK SCAN RESULTS
 
-EXTERNAL IP : $global:externalIP
-DOMAIN      : $global:domain
-DATE/TIME   : $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+EXTERNAL IP   : $global:externalIP
+DOMAIN        : $global:domain
+DATE/TIME     : $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+TOTAL DEVICES : $global:totalCount
 
 --------------------------------------
 "@
@@ -2362,6 +2366,8 @@ $Scan.Add_Click({
 		$Progress.Value = 0
 		$BarText.Text = 'Initializing'
 		$listView.Items.Clear()
+		$TotalListed.Text = ''
+		$global:totalCount = 0
 		$ExportContext.IsEnabled = $false
 		$hostNameColumn.Width = 284
 		Update-uiMain
