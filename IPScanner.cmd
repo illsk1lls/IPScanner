@@ -581,31 +581,34 @@ function CheckConnectivity {
 $sortDirections = @{}
 $listViewSortColumn = {
 	param([System.Object]$sender, [System.EventArgs]$Event)
-	$SortPropertyName = $Event.OriginalSource.Column.DisplayMemberBinding.Path.Path
+	$column = $Event.OriginalSource.Column
 
 	# Determine current direction, toggle if column has been sorted before
 	switch ($true) {
-		{$sortDirections.ContainsKey($SortPropertyName)} {
-			$sortDirections[$SortPropertyName] = -not $sortDirections[$SortPropertyName]
+		{$sortDirections.ContainsKey($column.Header)} {
+			$sortDirections[$column.Header] = -not $sortDirections[$column.Header]
 		}
 		default {
 			# false for descending, true for ascending
-			$sortDirections[$SortPropertyName] = $false
+			$sortDirections[$column.Header] = $false
 		}
 	}
-	$direction = if ($sortDirections[$SortPropertyName]) { "Ascending" } else { "Descending" }
+	$direction = if ($sortDirections[$column.Header]) { "Ascending" } else { "Descending" }
 
 	# Sort items
-	switch ($SortPropertyName) {
-		"IPaddress" {
-			$sortedItems = $Sender.Items | Sort-Object -Property @{Expression={[version]$_.IPaddress}; $direction=$true}
+	$sortedItems = switch ($column.Header) {
+		"IP Address" {
+			$Sender.Items | Sort-Object -Property {[version]$_.IPaddress} -Descending:($direction -eq "Descending")
 		}
 		default {
-			$sortedItems = $Sender.Items | Sort-Object -Property $SortPropertyName -Descending:($direction -eq "Descending")
+			if ($column.DisplayMemberBinding.Path.Path) {
+				$Sender.Items | Sort-Object -Property $column.DisplayMemberBinding.Path.Path -Descending:($direction -eq "Descending")
+			} else {
+				$Sender.Items
+			}
 		}
 	}
-
-	# Update ListView
+	# Rebuild sorted list
 	$Sender.Items.Clear()
 	$sortedItems | ForEach-Object { $Sender.Items.Add($_) }
 }
