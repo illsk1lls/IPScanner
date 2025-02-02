@@ -237,7 +237,7 @@ function List-Machines {
 				'Vendor' = $vendor;
 				'IPaddress' = $ip;
 				'HostName' = $name;
-				'Ping' = $pingResult
+				'Ping' = $pingResult;
 				'PingImage' = $pingImage
 			}
 			$listView.Items.Add($item)
@@ -248,7 +248,7 @@ function List-Machines {
 					'Vendor' = $vendor;
 					'IPaddress' = $ip;
 					'HostName' = $name;
-					'Ping' = $pingResult
+					'Ping' = $pingResult;
 					'PingImage' = $pingImage
 				}
 				$listView.Items.Add($item)
@@ -259,7 +259,7 @@ function List-Machines {
 					'Vendor' = $myVendor;
 					'IPaddress' = $internalIP;
 					'HostName' = "$hostName (This Device)";
-					'Ping' = $true
+					'Ping' = $true;
 					'PingImage' = $myPingTrueIcon
 				})
 				$item = [pscustomobject]@{
@@ -267,7 +267,7 @@ function List-Machines {
 					'Vendor' = $vendor;
 					'IPaddress' = $ip;
 					'HostName' = $name;
-					'Ping' = $pingResult
+					'Ping' = $pingResult;
 					'PingImage' = $pingImage
 				}
 				$listView.Items.Add($item)
@@ -279,7 +279,11 @@ function List-Machines {
 	# Now add entries for successful pings not in ARP data, excluding the internal IP
 	$successfulPingsNotInARP = $global:successfulPings | Where-Object { $_ -notin $arpOutput.IPAddress -and $_ -ne $internalIP }
 	foreach ($ip in $successfulPingsNotInARP) {
-		$mac = [MacAddressResolver]::GetMacFromIP($ip)
+		if ($global:gatewayPrefix -ne $originalGatewayPrefix) {
+			$mac = 'Unreachable'
+		} else {
+			$mac = [MacAddressResolver]::GetMacFromIP($ip)
+		}
 		$item = [pscustomobject]@{
 			'MACaddress' = $mac;
 			'Vendor' = $vendor;
@@ -396,7 +400,7 @@ function processVendors {
 # Background Hostname Lookup
 function processHostnames {
 	$hostnameLookupThread = [powershell]::Create().AddScript({
-		param ($listView, $internalIP, $RunspacePool)
+		param ($listView, $internalIP, $RunspacePool, $gatewayPrefix, $originalGatewayPrefix)
 
 		$pingItems = @()
 		$nonPingItems = @()
@@ -410,11 +414,12 @@ function processHostnames {
 			}
 		}
 
-		# DNS resolution with timeout
+		# Hostname resolution with timeout
+		$timeout = if ($gatewayPrefix -ne $originalGatewayPrefix) { 4500 } else { 3000 }
 		$resolveScript = {
-			param ($ip)
+			param ($ip, $timeout)
 			$dnsTask = [System.Net.Dns]::GetHostEntryAsync($ip)
-			$timeoutTask = [System.Threading.Tasks.Task]::Delay(3000)
+			$timeoutTask = [System.Threading.Tasks.Task]::Delay($timeout)
 
 			$task = [System.Threading.Tasks.Task]::WhenAny($dnsTask, $timeoutTask)
 			$task.Wait()
@@ -427,7 +432,7 @@ function processHostnames {
 			}
 		}
 
-		# setup separate RunspacePool
+		# Setup separate RunspacePool
 		$iss = [system.management.automation.runspaces.initialsessionstate]::CreateDefault()
 		$rsHost = [runspacefactory]::CreateRunspace($iss)
 		$rsHost.Open()
@@ -437,23 +442,27 @@ function processHostnames {
 		# Start hostNameJobs - responses first
 		$hostNameJobs = @()
 		foreach ($item in $pingItems) {
-			$hostNameJob = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress)
-			$hostNameJob.RunspacePool = $rsPool
-			$hostNameJobHandle = $hostNameJob.BeginInvoke()
-			$hostNameJobs += [PSCustomObject]@{
-				Pipeline = $hostNameJob
-				Handle = $hostNameJobHandle
-				IP = $item.IPaddress
+			if($item.Hostname -eq 'Resolving...'){
+				$hostNameJob = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress).AddArgument($timeout)
+				$hostNameJob.RunspacePool = $rsPool
+				$hostNameJobHandle = $hostNameJob.BeginInvoke()
+				$hostNameJobs += [PSCustomObject]@{
+					Pipeline = $hostNameJob
+					Handle = $hostNameJobHandle
+					IP = $item.IPaddress
+				}
 			}
 		}
 		foreach ($item in $nonPingItems) {
-			$hostNameJob = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress)
-			$hostNameJob.RunspacePool = $rsPool
-			$hostNameJobHandle = $hostNameJob.BeginInvoke()
-			$hostNameJobs += [PSCustomObject]@{
-				Pipeline = $hostNameJob
-				Handle = $hostNameJobHandle
-				IP = $item.IPaddress
+			if($item.Hostname -eq 'Resolving...'){
+				$hostNameJob = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress).AddArgument($timeout)
+				$hostNameJob.RunspacePool = $rsPool
+				$hostNameJobHandle = $hostNameJob.BeginInvoke()
+				$hostNameJobs += [PSCustomObject]@{
+					Pipeline = $hostNameJob
+					Handle = $hostNameJobHandle
+					IP = $item.IPaddress
+				}
 			}
 		}
 
@@ -482,7 +491,7 @@ function processHostnames {
 		$rsHost.Close()
 		$rsHost.Dispose()
 
-	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($RunspacePool)
+	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($RunspacePool).AddArgument($global:gatewayPrefix).AddArgument($originalGatewayPrefix)
 	$hostnameLookupThread.RunspacePool = $RunspacePool
 	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
