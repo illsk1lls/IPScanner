@@ -1224,7 +1224,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						</ContextMenu>
 					</ListView.ContextMenu>
 				</ListView>
-				<TextBlock Name="TotalListed" Foreground="{x:Static SystemColors.GrayTextBrush}" FontWeight="Normal" FontSize="11" Margin="58,453,0,0" HorizontalAlignment="Center"/>
+				<TextBlock Name="TotalListed" Foreground="{x:Static SystemColors.GrayTextBrush}" FontWeight="Normal" FontSize="11" Margin="55,453,0,0" HorizontalAlignment="Center"/>
 				<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
 					<Border Name="PopupBorder" CornerRadius="5" Width="350" Height="240" BorderThickness="0.70">
 						<Border.BorderBrush>
