@@ -1,4 +1,4 @@
-<h1 align="center">Simple IP Scanner - A Powershell/CMD Hybrid Network Scanner</h1>
+<h1 align="center">Simple IP Scanner - A Powershell Network Scanner</h1>
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/IPScanner.png?raw=true"></p>
 <p align="center"><sup>This script will work as either a .CMD or .PS1 file.<br>
