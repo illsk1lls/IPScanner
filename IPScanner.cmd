@@ -87,8 +87,8 @@ function Get-HostInfo {
 
 	# Initialize HostInfo RunspacePool
 	$infoSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-	$HostInfoRunspacePool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $infoSessionState, $Host)
-	$HostInfoRunspacePool.Open()
+	$global:hostInfoPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $infoSessionState, $Host)
+	$hostInfoPool.Open()
 
 	$getHostInfoScriptBlock = {
 		param(
@@ -160,10 +160,10 @@ function Get-HostInfo {
 	$getHostInfoThread.AddArgument($global:gateway)
 	$getHostInfoThread.AddArgument($global:gatewayPrefix)
 	$getHostInfoThread.AddArgument($originalGatewayPrefix)
-	$getHostInfoThread.RunspacePool = $HostInfoRunspacePool
-	$getHostInfoAsync = $getHostInfoThread.BeginInvoke()
-	$getHostInfoAsync.AsyncWaitHandle.WaitOne()
-	$hostInfoResults = $getHostInfoThread.EndInvoke($getHostInfoAsync)
+	$getHostInfoThread.RunspacePool = $hostInfoPool
+	$getHostInfo = $getHostInfoThread.BeginInvoke()
+	$getHostInfo.AsyncWaitHandle.WaitOne()
+	$hostInfoResults = $getHostInfoThread.EndInvoke($getHostInfo)
 	$global:hostName = $hostInfoResults.hostName
 	$global:externalIP = $hostInfoResults.externalIP
 	$global:internalIP = $hostInfoResults.internalIP
@@ -314,14 +314,10 @@ function List-Machines {
 function processVendors {
 	# Initialize RunspacePoolHostLookup
 	$vendorSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-	$vendorLookupPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $vendorSessionState, $Host)
+	$global:vendorLookupPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $vendorSessionState, $Host)
 	$vendorLookupPool.Open()
-	$runspaceVendor = [runspacefactory]::CreateRunspace()
-	$runspaceVendor.Open()
-	$vendorLookup = [powershell]::Create()
-	$vendorLookup.Runspace = $runspaceVendor
 
-	$lookupBlock = {
+	$vendorLookupBlock = {
 		param ($listView, $internalIP)
 
 		$vendorJobs = @{}
@@ -394,23 +390,25 @@ function processVendors {
 		Remove-Job -Job $vendorJobs.Values -Force
 	}
 
-	# Script block params
-	$null = $vendorLookup.AddScript($lookupBlock).AddArgument($listView).AddArgument($internalIP)
+	$vendorLookupThread = [runspacefactory]::CreateRunspace()
+	$vendorLookupThread.Open()
+	$vendorLookup = [powershell]::Create().AddScript($vendorLookupBlock)
+	$vendorLookup.AddArgument($listView)
+	$vendorLookup.AddArgument($internalIP)
+	$vendorLookup.Runspace = $vendorLookupThread
 	$vendorLookup.RunspacePool = $vendorLookupPool
-	$asyncResult = $vendorLookup.BeginInvoke()
-
-	# Cleanup
-	$vendorLookup.EndInvoke($asyncResult)
+	$vendorResult = $vendorLookup.BeginInvoke()
+	$vendorLookup.EndInvoke($vendorResult)
 	$vendorLookup.Dispose()
-	$runspaceVendor.Close()
-	$runspaceVendor.Dispose()
+	$vendorLookupThread.Close()
+	$vendorLookupThread.Dispose()
 }
 
 # Background Hostname Lookup
 function processHostnames {
 	# Initialize HostLookupRunspacePool
 	$hostSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-	$hostnameLookupPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $hostSessionState, $Host)
+	$global:hostnameLookupPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $hostSessionState, $Host)
 	$hostnameLookupPool.Open()
 	$hostnameLookupThread = [powershell]::Create().AddScript({
 		param ($listView, $internalIP, $hostnameLookupPool, $gatewayPrefix, $originalGatewayPrefix)
@@ -506,7 +504,7 @@ function processHostnames {
 
 	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($hostnameLookupPool).AddArgument($global:gatewayPrefix).AddArgument($originalGatewayPrefix)
 	$hostnameLookupThread.RunspacePool = $hostnameLookupPool
-	$hostnameScan = $hostnameLookupThread.BeginInvoke()
+	$hostnameLookupThread.BeginInvoke()
 }
 
 # Portscan
@@ -1514,7 +1512,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 									<ProgressBar Name="ProgressBar" Foreground="#FF00BFFF" Background="#777777" Width="200" Height="25" Value="0" Minimum="0" Maximum="100" HorizontalAlignment="Left" Margin="0,5,5,0" Visibility="Collapsed"/>
 									<TextBlock Name="ProgressText" Foreground="#000000" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Margin="0,5,0,0"/>
 								</Grid>
-								<ComboBox Name="cmbPortRange" Width="98" Height="25" Margin="5,5,0,0" Style="{StaticResource CustomComboBoxStyle2}"/>
+								<ComboBox Name="portScanRange" Width="98" Height="25" Margin="5,5,0,0" Style="{StaticResource CustomComboBoxStyle2}"/>
 							</StackPanel>
 							<ListBox Name="ResultsList" Grid.Row="2" Margin="10,10,10,10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#333333" Foreground="#EEEEEE" Visibility="Collapsed">
 								<ListBox.ItemContainerStyle>
@@ -1830,7 +1828,7 @@ $btnPortScan.Add_Click({
 	$ProgressBar.Visibility = 'Collapsed'
 	$ProgressText.Visibility = 'Visible'
 	$ProgressText.Text = ''
-	$cmbPortRange.Visibility = 'Visible'
+	$portScanRange.Visibility = 'Visible'
 	$ResultsList.Visibility = 'Visible'
 	$ResultsList.Items.Clear()
 	$PopupCanvas2.Visibility = 'Visible'
@@ -1839,13 +1837,13 @@ $btnPortScan.Add_Click({
 	$ButtonStackPanel2.Visibility = 'Visible'
 
 	# Initialize combobox if not already done
-	if ($cmbPortRange.Items.Count -eq 0) {
+	if ($portScanRange.Items.Count -eq 0) {
 		for ($start = 1; $start -le 65535; $start += 4000) {
 			$end = [Math]::Min($start + 3999, 65535)
 			$range = "$start-$end"
-			$cmbPortRange.Items.Add($range) | Out-Null
+			$portScanRange.Items.Add($range) | Out-Null
 		}
-		$cmbPortRange.SelectedIndex = 0
+		$portScanRange.SelectedIndex = 0
 	}
 })
 
@@ -1853,8 +1851,8 @@ $btnScan.Add_Click({
 	$btnScan.IsEnabled = $false
 	$Scan.IsEnabled = $false
 	# Check if anything is selected in the ComboBox
-	if ($cmbPortRange.SelectedIndex -ge 0) {
-		$selectedRange = $cmbPortRange.SelectedItem.ToString()
+	if ($portScanRange.SelectedIndex -ge 0) {
+		$selectedRange = $portScanRange.SelectedItem.ToString()
 		$portRange = $selectedRange -split '-' | ForEach-Object {[int]$_}
 		$startPort, $endPort = $portRange
 		$totalPorts = $endPort - $startPort + 1
@@ -2080,7 +2078,6 @@ $ExportToHTML.Add_Click({
 </body>
 </html>
 "@
-
 			# Write HTML to file
 			[System.IO.File]::WriteAllText($path, $htmlContent)
 			Show-Popup2 -Message 'Export to HTML completed successfully!' -Title 'Export:'
@@ -2311,6 +2308,12 @@ function TrackProgress {
 		# Short sleep to not overload the system
 		Start-Sleep -Milliseconds 5
 	} while ($completedItems -lt $totalItems)
+	$hostInfoPool.Close()
+	$hostInfoPool.Dispose()
+	$vendorLookupPool.Close()
+	$vendorLookupPool.Dispose()
+	$hostnameLookupPool.Close()
+	$hostnameLookupPool.Dispose()
 }
 
 # Ensure clean ListView
