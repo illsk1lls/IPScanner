@@ -77,11 +77,6 @@ $global:gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts
 # Store the original gateway prefix for reset functionality
 $originalGatewayPrefix = $global:gatewayPrefix
 
-# Initialize RunspacePool
-$SessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-$RunspacePool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $SessionState, $Host)
-$RunspacePool.Open()
-
 # Get Host Info
 function Get-HostInfo {
 	param(
@@ -89,6 +84,12 @@ function Get-HostInfo {
 		[string]$gatewayPrefix,
 		[string]$originalGatewayPrefix
 	)
+
+	# Initialize HostInfo RunspacePool
+	$infoSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+	$HostInfoRunspacePool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $infoSessionState, $Host)
+	$HostInfoRunspacePool.Open()
+
 	$getHostInfoScriptBlock = {
 		param(
 			[string]$gateway,
@@ -159,7 +160,7 @@ function Get-HostInfo {
 	$getHostInfoThread.AddArgument($global:gateway)
 	$getHostInfoThread.AddArgument($global:gatewayPrefix)
 	$getHostInfoThread.AddArgument($originalGatewayPrefix)
-	$getHostInfoThread.RunspacePool = $RunspacePool
+	$getHostInfoThread.RunspacePool = $HostInfoRunspacePool
 	$getHostInfoAsync = $getHostInfoThread.BeginInvoke()
 	$getHostInfoAsync.AsyncWaitHandle.WaitOne()
 	$hostInfoResults = $getHostInfoThread.EndInvoke($getHostInfoAsync)
@@ -311,10 +312,14 @@ function List-Machines {
 
 # Background Vendor Lookup
 function processVendors {
-	$runspace = [runspacefactory]::CreateRunspace()
-	$runspace.Open()
+	# Initialize RunspacePoolHostLookup
+	$vendorSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+	$vendorLookupPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $vendorSessionState, $Host)
+	$vendorLookupPool.Open()
+	$runspaceVendor = [runspacefactory]::CreateRunspace()
+	$runspaceVendor.Open()
 	$vendorLookup = [powershell]::Create()
-	$vendorLookup.Runspace = $runspace
+	$vendorLookup.Runspace = $runspaceVendor
 
 	$lookupBlock = {
 		param ($listView, $internalIP)
@@ -391,20 +396,24 @@ function processVendors {
 
 	# Script block params
 	$null = $vendorLookup.AddScript($lookupBlock).AddArgument($listView).AddArgument($internalIP)
-
+	$vendorLookup.RunspacePool = $vendorLookupPool
 	$asyncResult = $vendorLookup.BeginInvoke()
 
 	# Cleanup
 	$vendorLookup.EndInvoke($asyncResult)
 	$vendorLookup.Dispose()
-	$runspace.Close()
-	$runspace.Dispose()
+	$runspaceVendor.Close()
+	$runspaceVendor.Dispose()
 }
 
 # Background Hostname Lookup
 function processHostnames {
+	# Initialize HostLookupRunspacePool
+	$hostSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+	$hostnameLookupPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $hostSessionState, $Host)
+	$hostnameLookupPool.Open()
 	$hostnameLookupThread = [powershell]::Create().AddScript({
-		param ($listView, $internalIP, $RunspacePool, $gatewayPrefix, $originalGatewayPrefix)
+		param ($listView, $internalIP, $hostnameLookupPool, $gatewayPrefix, $originalGatewayPrefix)
 
 		$pingItems = @()
 		$nonPingItems = @()
@@ -440,7 +449,7 @@ function processHostnames {
 		$iss = [system.management.automation.runspaces.initialsessionstate]::CreateDefault()
 		$rsHost = [runspacefactory]::CreateRunspace($iss)
 		$rsHost.Open()
-		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $rsHost, $RunspacePool.ApartmentState)
+		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $rsHost, $hostnameLookupPool.ApartmentState)
 		$rsPool.Open()
 
 		# Start hostNameJobs - responses first
@@ -495,8 +504,8 @@ function processHostnames {
 		$rsHost.Close()
 		$rsHost.Dispose()
 
-	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($RunspacePool).AddArgument($global:gatewayPrefix).AddArgument($originalGatewayPrefix)
-	$hostnameLookupThread.RunspacePool = $RunspacePool
+	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($hostnameLookupPool).AddArgument($global:gatewayPrefix).AddArgument($originalGatewayPrefix)
+	$hostnameLookupThread.RunspacePool = $hostnameLookupPool
 	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
 
