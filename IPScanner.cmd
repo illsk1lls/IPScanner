@@ -77,6 +77,11 @@ $global:gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts
 # Store the original gateway prefix for reset functionality
 $originalGatewayPrefix = $global:gatewayPrefix
 
+# Initialize RunspacePool
+$SessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+$RunspacePool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $SessionState, $Host)
+$RunspacePool.Open()
+
 # Get Host Info
 function Get-HostInfo {
 	param(
@@ -84,12 +89,6 @@ function Get-HostInfo {
 		[string]$gatewayPrefix,
 		[string]$originalGatewayPrefix
 	)
-
-	# Initialize HostInfo RunspacePool
-	$infoSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-	$global:hostInfoPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $infoSessionState, $Host)
-	$hostInfoPool.Open()
-
 	$getHostInfoScriptBlock = {
 		param(
 			[string]$gateway,
@@ -160,10 +159,10 @@ function Get-HostInfo {
 	$getHostInfoThread.AddArgument($global:gateway)
 	$getHostInfoThread.AddArgument($global:gatewayPrefix)
 	$getHostInfoThread.AddArgument($originalGatewayPrefix)
-	$getHostInfoThread.RunspacePool = $hostInfoPool
-	$getHostInfo = $getHostInfoThread.BeginInvoke()
-	$getHostInfo.AsyncWaitHandle.WaitOne()
-	$hostInfoResults = $getHostInfoThread.EndInvoke($getHostInfo)
+	$getHostInfoThread.RunspacePool = $RunspacePool
+	$getHostInfoAsync = $getHostInfoThread.BeginInvoke()
+	$getHostInfoAsync.AsyncWaitHandle.WaitOne()
+	$hostInfoResults = $getHostInfoThread.EndInvoke($getHostInfoAsync)
 	$global:hostName = $hostInfoResults.hostName
 	$global:externalIP = $hostInfoResults.externalIP
 	$global:internalIP = $hostInfoResults.internalIP
@@ -312,12 +311,12 @@ function List-Machines {
 
 # Background Vendor Lookup
 function processVendors {
-	# Initialize RunspacePoolHostLookup
-	$vendorSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-	$global:vendorLookupPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $vendorSessionState, $Host)
-	$vendorLookupPool.Open()
+	$runspace = [runspacefactory]::CreateRunspace()
+	$runspace.Open()
+	$vendorLookup = [powershell]::Create()
+	$vendorLookup.Runspace = $runspace
 
-	$vendorLookupBlock = {
+	$lookupBlock = {
 		param ($listView, $internalIP)
 
 		$vendorJobs = @{}
@@ -390,28 +389,22 @@ function processVendors {
 		Remove-Job -Job $vendorJobs.Values -Force
 	}
 
-	$vendorLookupThread = [runspacefactory]::CreateRunspace()
-	$vendorLookupThread.Open()
-	$vendorLookup = [powershell]::Create().AddScript($vendorLookupBlock)
-	$vendorLookup.AddArgument($listView)
-	$vendorLookup.AddArgument($internalIP)
-	$vendorLookup.Runspace = $vendorLookupThread
-	$vendorLookup.RunspacePool = $vendorLookupPool
-	$vendorResult = $vendorLookup.BeginInvoke()
-	$vendorLookup.EndInvoke($vendorResult)
+	# Script block params
+	$null = $vendorLookup.AddScript($lookupBlock).AddArgument($listView).AddArgument($internalIP)
+
+	$asyncResult = $vendorLookup.BeginInvoke()
+
+	# Cleanup
+	$vendorLookup.EndInvoke($asyncResult)
 	$vendorLookup.Dispose()
-	$vendorLookupThread.Close()
-	$vendorLookupThread.Dispose()
+	$runspace.Close()
+	$runspace.Dispose()
 }
 
 # Background Hostname Lookup
 function processHostnames {
-	# Initialize HostLookupRunspacePool
-	$hostSessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
-	$global:hostnameLookupPool = [runspacefactory]::CreateRunspacePool(1, [System.Environment]::ProcessorCount, $hostSessionState, $Host)
-	$hostnameLookupPool.Open()
 	$hostnameLookupThread = [powershell]::Create().AddScript({
-		param ($listView, $internalIP, $hostnameLookupPool, $gatewayPrefix, $originalGatewayPrefix)
+		param ($listView, $internalIP, $RunspacePool, $gatewayPrefix, $originalGatewayPrefix)
 
 		$pingItems = @()
 		$nonPingItems = @()
@@ -447,7 +440,7 @@ function processHostnames {
 		$iss = [system.management.automation.runspaces.initialsessionstate]::CreateDefault()
 		$rsHost = [runspacefactory]::CreateRunspace($iss)
 		$rsHost.Open()
-		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $rsHost, $hostnameLookupPool.ApartmentState)
+		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $rsHost, $RunspacePool.ApartmentState)
 		$rsPool.Open()
 
 		# Start hostNameJobs - responses first
@@ -502,9 +495,9 @@ function processHostnames {
 		$rsHost.Close()
 		$rsHost.Dispose()
 
-	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($hostnameLookupPool).AddArgument($global:gatewayPrefix).AddArgument($originalGatewayPrefix)
-	$hostnameLookupThread.RunspacePool = $hostnameLookupPool
-	$hostnameLookupThread.BeginInvoke()
+	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($RunspacePool).AddArgument($global:gatewayPrefix).AddArgument($originalGatewayPrefix)
+	$hostnameLookupThread.RunspacePool = $RunspacePool
+	$hostnameScan = $hostnameLookupThread.BeginInvoke()
 }
 
 # Portscan
@@ -1512,7 +1505,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 									<ProgressBar Name="ProgressBar" Foreground="#FF00BFFF" Background="#777777" Width="200" Height="25" Value="0" Minimum="0" Maximum="100" HorizontalAlignment="Left" Margin="0,5,5,0" Visibility="Collapsed"/>
 									<TextBlock Name="ProgressText" Foreground="#000000" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Margin="0,5,0,0"/>
 								</Grid>
-								<ComboBox Name="portScanRange" Width="98" Height="25" Margin="5,5,0,0" Style="{StaticResource CustomComboBoxStyle2}"/>
+								<ComboBox Name="cmbPortRange" Width="98" Height="25" Margin="5,5,0,0" Style="{StaticResource CustomComboBoxStyle2}"/>
 							</StackPanel>
 							<ListBox Name="ResultsList" Grid.Row="2" Margin="10,10,10,10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#333333" Foreground="#EEEEEE" Visibility="Collapsed">
 								<ListBox.ItemContainerStyle>
@@ -1828,7 +1821,7 @@ $btnPortScan.Add_Click({
 	$ProgressBar.Visibility = 'Collapsed'
 	$ProgressText.Visibility = 'Visible'
 	$ProgressText.Text = ''
-	$portScanRange.Visibility = 'Visible'
+	$cmbPortRange.Visibility = 'Visible'
 	$ResultsList.Visibility = 'Visible'
 	$ResultsList.Items.Clear()
 	$PopupCanvas2.Visibility = 'Visible'
@@ -1837,13 +1830,13 @@ $btnPortScan.Add_Click({
 	$ButtonStackPanel2.Visibility = 'Visible'
 
 	# Initialize combobox if not already done
-	if ($portScanRange.Items.Count -eq 0) {
+	if ($cmbPortRange.Items.Count -eq 0) {
 		for ($start = 1; $start -le 65535; $start += 4000) {
 			$end = [Math]::Min($start + 3999, 65535)
 			$range = "$start-$end"
-			$portScanRange.Items.Add($range) | Out-Null
+			$cmbPortRange.Items.Add($range) | Out-Null
 		}
-		$portScanRange.SelectedIndex = 0
+		$cmbPortRange.SelectedIndex = 0
 	}
 })
 
@@ -1851,8 +1844,8 @@ $btnScan.Add_Click({
 	$btnScan.IsEnabled = $false
 	$Scan.IsEnabled = $false
 	# Check if anything is selected in the ComboBox
-	if ($portScanRange.SelectedIndex -ge 0) {
-		$selectedRange = $portScanRange.SelectedItem.ToString()
+	if ($cmbPortRange.SelectedIndex -ge 0) {
+		$selectedRange = $cmbPortRange.SelectedItem.ToString()
 		$portRange = $selectedRange -split '-' | ForEach-Object {[int]$_}
 		$startPort, $endPort = $portRange
 		$totalPorts = $endPort - $startPort + 1
@@ -2078,6 +2071,7 @@ $ExportToHTML.Add_Click({
 </body>
 </html>
 "@
+
 			# Write HTML to file
 			[System.IO.File]::WriteAllText($path, $htmlContent)
 			Show-Popup2 -Message 'Export to HTML completed successfully!' -Title 'Export:'
@@ -2308,12 +2302,6 @@ function TrackProgress {
 		# Short sleep to not overload the system
 		Start-Sleep -Milliseconds 5
 	} while ($completedItems -lt $totalItems)
-	$hostInfoPool.Close()
-	$hostInfoPool.Dispose()
-	$vendorLookupPool.Close()
-	$vendorLookupPool.Dispose()
-	$hostnameLookupPool.Close()
-	$hostnameLookupPool.Dispose()
 }
 
 # Ensure clean ListView
