@@ -2345,6 +2345,7 @@ $Scan.Add_Click({
 			try{
 				Start-Process -Verb RunAs powershell -WindowStyle Minimized -ArgumentList '-Command "& {Remove-NetNeighbor -InterfaceAlias * -Confirm:$false}"'
 				$listView.Items.Clear()
+				$TotalListed.Text = ''
 				Show-Popup2 -Message 'Cached peer list cleared...' -Title 'List Cleared:'
 			}catch{
 				Show-Popup2 -Message 'No action was taken...' -Title 'Process Aborted:'
