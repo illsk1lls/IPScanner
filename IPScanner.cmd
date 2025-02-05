@@ -160,9 +160,9 @@ function Get-HostInfo {
 	$getHostInfoThread.AddArgument($global:gatewayPrefix)
 	$getHostInfoThread.AddArgument($originalGatewayPrefix)
 	$getHostInfoThread.RunspacePool = $RunspacePool
-	$getHostInfoAsync = $getHostInfoThread.BeginInvoke()
-	$getHostInfoAsync.AsyncWaitHandle.WaitOne()
-	$hostInfoResults = $getHostInfoThread.EndInvoke($getHostInfoAsync)
+	$getHostInfoResult = $getHostInfoThread.BeginInvoke()
+	$getHostInfoResult.AsyncWaitHandle.WaitOne()
+	$hostInfoResults = $getHostInfoThread.EndInvoke($getHostInfoResult)
 	$global:hostName = $hostInfoResults.hostName
 	$global:externalIP = $hostInfoResults.externalIP
 	$global:internalIP = $hostInfoResults.internalIP
@@ -311,10 +311,10 @@ function List-Machines {
 
 # Background Vendor Lookup
 function processVendors {
-	$runspace = [runspacefactory]::CreateRunspace()
-	$runspace.Open()
+	$vendorRunspace = [runspacefactory]::CreateRunspace()
+	$vendorRunspace.Open()
 	$vendorLookup = [powershell]::Create()
-	$vendorLookup.Runspace = $runspace
+	$vendorLookup.Runspace = $vendorRunspace
 
 	$lookupBlock = {
 		param ($listView, $internalIP)
@@ -339,26 +339,23 @@ function processVendors {
 						}
 					} -ArgumentList $mac
 					$vendorJobs[$ip] = $vendorJob
-					do {
-						# Limit maximum vendor tasks and process
-						foreach ($ipCheck in @($vendorJobs.Keys)) {
-							if ($vendorJobs[$ipCheck].State -eq "Completed") {
-								$result = Receive-Job -Job $vendorJobs[$ipCheck]
-								$vendorResult = if ($result -and $result.Company) {
+					foreach ($ipCheck in @($vendorJobs.Keys)) {
+						if ($vendorJobs[$ipCheck].State -eq "Completed") {
+							$result = Receive-Job -Job $vendorJobs[$ipCheck]
+							$vendorResult = if ($result -and $result.Company) {
 									$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
-								} else {
-									'Unable to Identify'
-								}
-								foreach ($it in $listView.Items) {
-									if ($it.IPaddress -eq $ipCheck) {
-										$it.Vendor = $vendorResult
-									}
-								}
-								$vendorJobs.Remove($ipCheck)
+							} else {
+								'Unable to Identify'
 							}
+							foreach ($it in $listView.Items) {
+								if ($it.IPaddress -eq $ipCheck) {
+									$it.Vendor = $vendorResult
+								}
+							}
+							$vendorJobs.Remove($ipCheck)
 						}
-						Start-Sleep -Milliseconds 50
-					} while ($vendorJobs.Count -ge 5)
+					}
+					Start-Sleep -Milliseconds 125
 				}
 			}
 		}
@@ -382,7 +379,7 @@ function processVendors {
 					$vendorJobs.Remove($ipCheck)
 				}
 			}
-			Start-Sleep -Milliseconds 50
+			Start-Sleep -Milliseconds 10
 		}
 
 		# Clean up jobs
@@ -392,18 +389,20 @@ function processVendors {
 	# Script block params
 	$null = $vendorLookup.AddScript($lookupBlock).AddArgument($listView).AddArgument($internalIP)
 
-	$asyncResult = $vendorLookup.BeginInvoke()
+	$hostResult = $vendorLookup.BeginInvoke()
 
 	# Cleanup
-	$vendorLookup.EndInvoke($asyncResult)
+	$vendorLookup.EndInvoke($hostResult)
 	$vendorLookup.Dispose()
-	$runspace.Close()
-	$runspace.Dispose()
+	$vendorRunspace.Close()
+	$vendorRunspace.Dispose()
 }
 
 # Background Hostname Lookup
 function processHostnames {
-	$hostnameLookupThread = [powershell]::Create().AddScript({
+	$hostnameRunspace = [runspacefactory]::CreateRunspace()
+	$hostnameRunspace.Open()
+	$hostnameLookup = [powershell]::Create().AddScript({
 		param ($listView, $internalIP, $RunspacePool, $gatewayPrefix, $originalGatewayPrefix)
 
 		$pingItems = @()
@@ -440,7 +439,7 @@ function processHostnames {
 		$iss = [system.management.automation.runspaces.initialsessionstate]::CreateDefault()
 		$rsHost = [runspacefactory]::CreateRunspace($iss)
 		$rsHost.Open()
-		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $rsHost, $RunspacePool.ApartmentState)
+		$rsPool = [runspacefactory]::CreateRunspacePool(1, 5, $rsHost, $RunspacePool.ApartmentState)
 		$rsPool.Open()
 
 		# Start hostNameJobs - responses first
@@ -496,8 +495,8 @@ function processHostnames {
 		$rsHost.Dispose()
 
 	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($RunspacePool).AddArgument($global:gatewayPrefix).AddArgument($originalGatewayPrefix)
-	$hostnameLookupThread.RunspacePool = $RunspacePool
-	$hostnameScan = $hostnameLookupThread.BeginInvoke()
+	$hostnameLookup.Runspace = $hostnameRunspace
+	$hostnameScan = $hostnameLookup.BeginInvoke()
 }
 
 # Portscan
@@ -2295,12 +2294,12 @@ function TrackProgress {
 		} else {
 			# If no change, update the UI occasionally to show that the process is ongoing
 			if ($completedItems -lt $totalItems) {
-				Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
+				Update-uiMain
 			}
 		}
 
 		# Short sleep to not overload the system
-		Start-Sleep -Milliseconds 5
+		Start-Sleep -Milliseconds 20
 	} while ($completedItems -lt $totalItems)
 }
 
