@@ -227,72 +227,48 @@ function List-Machines {
 
 		# Determine if the IP was pingable
 		$pingResult = $ip -in $global:successfulPings
-		$pingImage = Create-GradientEllipse -isPingSuccessful $pingResult
 
 		# Format and display
-		$lastOctet = [int]($ip -split '\.')[-1]
-		if ($myLastOctet -gt $lastOctet) {
-			$item = [pscustomobject]@{
-				'MACaddress' = $mac;
-				'Vendor' = $vendor;
-				'IPaddress' = $ip;
-				'HostName' = $name;
-				'Ping' = $pingResult;
-				'PingImage' = $pingImage
-			}
-			$listView.Items.Add($item)
-		} else {
-			if ($self -ge 1) {
-				$item = [pscustomobject]@{
-					'MACaddress' = $mac;
-					'Vendor' = $vendor;
-					'IPaddress' = $ip;
-					'HostName' = $name;
-					'Ping' = $pingResult;
-					'PingImage' = $pingImage
-				}
-				$listView.Items.Add($item)
-			} else {
-				$myPingTrueIcon = Create-GradientEllipse -isPingSuccessful $true
-				$listView.Items.Add([pscustomobject]@{
-					'MACaddress' = $myMac;
-					'Vendor' = $myVendor;
-					'IPaddress' = $internalIP;
-					'HostName' = "$hostName (This Device)";
-					'Ping' = $true;
-					'PingImage' = $myPingTrueIcon
-				})
-				$item = [pscustomobject]@{
-					'MACaddress' = $mac;
-					'Vendor' = $vendor;
-					'IPaddress' = $ip;
-					'HostName' = $name;
-					'Ping' = $pingResult;
-					'PingImage' = $pingImage
-				}
-				$listView.Items.Add($item)
-				$self++
-			}
+		$item = [pscustomobject]@{
+			'MACaddress' = $mac;
+			'Vendor' = $vendor;
+			'IPaddress' = $ip;
+			'HostName' = $name;
+			'Ping' = $pingResult;
+			'PingImage' = Create-GradientEllipse -isPingSuccessful $pingResult
 		}
+		$listView.Items.Add($item)
 	}
 
-	# Now add entries for successful pings not in ARP data, excluding the internal IP
-	$successfulPingsNotInARP = $global:successfulPings | Where-Object { $_ -notin $arpOutput.IPAddress -and $_ -ne $internalIP }
+	# Now add entries for successful pings not in ARP data, and add self
+	$successfulPingsNotInARP = $global:successfulPings | Where-Object { $_ -notin $arpOutput.IPAddress }
 	foreach ($ip in $successfulPingsNotInARP) {
 		if ($global:gatewayPrefix -ne $originalGatewayPrefix) {
 			$mac = 'Unreachable'
 		} else {
 			$mac = [MacAddressResolver]::GetMacFromIP($ip)
 		}
-		$item = [pscustomobject]@{
-			'MACaddress' = $mac;
-			'Vendor' = $vendor;
-			'IPaddress' = $ip;
-			'HostName' = 'Resolving...';
-			'Ping' = $true;
-			'PingImage' = Create-GradientEllipse -isPingSuccessful $true
+		if ($ip -eq $internalIP) {
+			$item = [pscustomobject]@{
+				'MACaddress' = $myMac;
+				'Vendor' = $myVendor;
+				'IPaddress' = $internalIP;
+				'HostName' = "$hostName (This Device)";
+				'Ping' = $true;
+				'PingImage' = Create-GradientEllipse -isPingSuccessful $true
+			}
+			$listView.Items.Add($item)
+		} else {
+			$item = [pscustomobject]@{
+				'MACaddress' = $mac;
+				'Vendor' = $vendor;
+				'IPaddress' = $ip;
+				'HostName' = 'Resolving...';
+				'Ping' = $true;
+				'PingImage' = Create-GradientEllipse -isPingSuccessful $true
+			}
+			$listView.Items.Add($item)
 		}
-		$listView.Items.Add($item)
 	}
 
 	# Sort ListView items by IP address in ascending order
@@ -586,7 +562,7 @@ function CheckConnectivity {
 	}
 
 	# Show ping response status in popup window
-	$pingStatusImage.Content = if ($selectedItem.Ping) { Create-GradientEllipse -isPingSuccessful $true -width 12 -height 12 } else { Create-GradientEllipse -isPingSuccessful $false -width 12 -height 12 }
+	$pingStatusImage.Content = Create-GradientEllipse -isPingSuccessful $selectedItem.Ping -width 12 -height 12
 	$pingStatusText.Text = if ($selectedItem.Ping) { "ICMP response received" } else { "No ICMP response received" }
 }
 
@@ -1739,7 +1715,7 @@ $pCloseButton2.Add_Click({
 		$ProgressBar.Visibility = 'Collapsed'
 		$ProgressBar.Value = 0
 		Update-uiMain
-		$btnScan.IsEnabled = $true	
+		$btnScan.IsEnabled = $true
 		$Scan.IsEnabled = $true
 	}
 	$global:CtrlIsDown = $false
