@@ -82,7 +82,7 @@ function List-Machines {
 	$arpInit = Get-NetNeighbor | Where-Object { $_.State -eq "Reachable" -or $_.State -eq "Stale" } | Select-Object -Property IPAddress, LinkLayerAddress
 
 	# Convert IP Addresses from string to int by each section
-	$arpConverted = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
+	$arpConverted = $arpInit | Where-Object { $_.IPAddress -match "^\d+\.\d+\.\d+\.\d+$" } | Sort-Object -Property { $ip = $_.IPAddress; [version]($ip) }
 
 	# Sort by IP using [version] sorting
 	$arpOutput = $arpConverted | Sort-Object {[version]$_.IPaddress}
