@@ -202,7 +202,7 @@ function List-Machines {
 	Update-Progress 0 'Identifying Devices'
 
 	# Convert IP Addresses from string to int by each section
-	$arpOutput = $arpInit | Sort-Object -Property {$ip = $_.IPaddress; $ip -split '\.' | ForEach-Object {[int]$_}}
+	$arpOutput = $arpInit | Where-Object { $_.IPAddress -match "^\d+\.\d+\.\d+\.\d+$" } | Sort-Object -Property { $ip = $_.IPAddress; [version]($ip) }
 
 	$self = 0
 	$myLastOctet = [int]($internalIP -split '\.')[-1]
