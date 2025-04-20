@@ -72,7 +72,7 @@ function Update-Progress {
 $route = Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1
 $global:gateway = $route.NextHop
 $gatewayParts = $global:gateway -split '\.'
-$global:gatewayPrefix = "$($gatewayParts[0]).$($gatewayParts[1]).$($gatewayParts[2])."
+$global:gatewayPrefix = (($gatewayParts[0..2] -join '.') + '.')
 
 # Store the original gateway prefix for reset functionality
 $originalGatewayPrefix = $global:gatewayPrefix
@@ -657,6 +657,97 @@ function Create-GradientEllipse {
 	return $ellipse
 }
 
+# Display network speed as KB/s -MB/s -GB/s
+function Format-Speed {
+	param ([double]$speedInKBs)
+	if ($speedInKBs -ge 1024 * 1024) { return "{0:N1}gb" -f ($speedInKBs / (1024 * 1024)) }
+	elseif ($speedInKBs -ge 1024) { return "{0:N1}mb" -f ($speedInKBs / 1024) }
+	else { return "{0:N0}kb" -f $speedInKBs }
+}
+
+# Initialize hashtable for Monitor Mode
+$global:syncHash = [Hashtable]::Synchronized(@{
+	NetworkStats = @{}
+	TCPConnections = @()
+	LastUpdate = [DateTime]::Now
+	Error = $null
+})
+
+function Start-NetMonBackgroundTask {
+	$backgroundScript = {
+		param($syncHash, $adapters)
+		function Get-NetworkStatsWithTimeout {
+			$statsPerAdapter = @{}
+			$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+			$timeoutMs = 100
+			$retryCount = 2
+			for ($i = 0; $i -lt $retryCount; $i++) {
+				try {
+					$currentAdapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" -and $_.InterfaceDescription -notlike "*Loopback*" -and $_.InterfaceDescription -notlike "*ISATAP*" }
+					if (-not $currentAdapters) {
+						return $statsPerAdapter
+					}
+					foreach ($adapter in $currentAdapters) {
+						$adapterName = $adapter.Name
+						$stats = Get-NetAdapterStatistics -Name $adapterName -ErrorAction SilentlyContinue
+						if ($stats) {
+							$statsPerAdapter[$adapterName] = @{
+								RxBytes = [double]$stats.ReceivedBytes
+								TxBytes = [double]$stats.SentBytes
+								Timestamp = [double](Get-Date).Ticks
+							}
+						} else {
+							$global:syncHash.Error =  "No stats returned for adapter: $adapterName"
+						}
+					}
+					if ($statsPerAdapter.Count -gt 0) { break }
+					Start-Sleep -Milliseconds 100
+				} catch {
+					$global:syncHash.Error = "Network stats error: $_"
+				}
+				$stopwatch.Stop()
+				if ($stopwatch.ElapsedMilliseconds -gt $timeoutMs) { break }
+				$stopwatch.Restart()
+			}
+			return $statsPerAdapter
+		}
+		function Get-TCPConnections {
+			try {
+				$connections = Get-NetTCPConnection | Where-Object { $_.State -eq "Established" }
+				$tcpList = @()
+				foreach ($conn in $connections) {
+					$process = Get-CimInstance Win32_Process -Filter "ProcessId = $($conn.OwningProcess)" -ErrorAction SilentlyContinue
+					$processName = if ($process) { $process.Name } else { "Unknown" }
+					$tcpList += [PSCustomObject]@{
+						LocalAddress = $conn.LocalAddress; LocalPort = $conn.LocalPort; RemoteAddress = $conn.RemoteAddress; RemotePort = $conn.RemotePort; ProcessName = $processName
+					}
+				}
+				return $tcpList
+			} catch {
+				$global:syncHash.Error = "TCP connections error: $_"
+				return @()
+			}
+		}
+		while ($true) {
+			try {
+				$stats = Get-NetworkStatsWithTimeout
+				$tcp = Get-TCPConnections
+				$global:syncHash.NetworkStats = $stats
+				$global:syncHash.TCPConnections = $tcp
+				$global:syncHash.LastUpdate = [DateTime]::Now
+				$global:syncHash.Error = $null
+			} catch {
+				Write-Host "Background task error: $_"
+				$global:syncHash.Error = $_.ToString()
+			}
+			Start-Sleep -Milliseconds 1000
+		}
+	}
+	$runspace = [PowerShell]::Create().AddScript($backgroundScript).AddArgument($syncHash).AddArgument($adapters)
+	$runspace.RunspacePool = $RunspacePool
+	return $runspace.BeginInvoke()
+}
+
 # Direct MAC request via iphlpapi.dll
 Add-Type -TypeDefinition @"
 using System;
@@ -1074,6 +1165,162 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 				</Setter.Value>
 			</Setter>
 		</Style>
+		<Style x:Key="NetMonComboBoxStyle" TargetType="{x:Type ComboBox}">
+			<Setter Property="Width" Value="150"/>
+			<Setter Property="Height" Value="25"/>
+			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Setter Property="Margin" Value="0,0,5,0"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type ComboBox}">
+						<Grid>
+							<ToggleButton Name="ToggleButton" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Background="#333333" Foreground="#EEEEEE" BorderThickness="0.85" BorderBrush="#FF00BFFF">
+								<ToggleButton.Template>
+									<ControlTemplate TargetType="{x:Type ToggleButton}">
+										<Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+											<ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+										</Border>
+										<ControlTemplate.Triggers>
+											<Trigger Property="IsMouseOver" Value="True">
+												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+											</Trigger>
+											<Trigger Property="IsChecked" Value="True">
+												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+											</Trigger>
+										</ControlTemplate.Triggers>
+									</ControlTemplate>
+								</ToggleButton.Template>
+								<DockPanel LastChildFill="False">
+									<TextBlock Text="{Binding SelectedItem, RelativeSource={RelativeSource TemplatedParent}}" DockPanel.Dock="Left" VerticalAlignment="Center" Foreground="#EEEEEE" Margin="5,0,5,0"/>
+									<Path x:Name="ComboArrow" DockPanel.Dock="Right" Data="M0 0 L5 2.5 L10 0 Z" Width="10" Height="5" Margin="5,0,5,0" Stretch="Fill" VerticalAlignment="Center">
+										<Path.Fill><SolidColorBrush Color="#EEEEEE"/></Path.Fill>
+									</Path>
+								</DockPanel>
+							</ToggleButton>
+							<Popup IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide" Width="150">
+								<Border Name="DropDownBorder" BorderBrush="#CCCCCC" BorderThickness="0.80" Background="#444444">
+									<ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+										<StackPanel IsItemsHost="True">
+											<StackPanel.Resources>
+												<Style TargetType="{x:Type ComboBoxItem}">
+													<Setter Property="Foreground" Value="#EEEEEE"/>
+													<Setter Property="Background" Value="#444444"/>
+													<Setter Property="HorizontalContentAlignment" Value="Left"/>
+													<Style.Triggers>
+														<Trigger Property="IsHighlighted" Value="True">
+															<Setter Property="Background" Value="#555555"/>
+														</Trigger>
+														<Trigger Property="IsSelected" Value="True">
+															<Setter Property="Background" Value="#555555"/>
+														</Trigger>
+													</Style.Triggers>
+												</Style>
+											</StackPanel.Resources>
+										</StackPanel>
+									</ScrollViewer>
+								</Border>
+							</Popup>
+						</Grid>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="ToggleButton" Property="BorderBrush" Value="#EEEEEE"/>
+							</Trigger>
+							<Trigger Property="IsDropDownOpen" Value="True">
+								<Setter TargetName="DropDownBorder" Property="BorderBrush" Value="#FF00BFFF"/>
+								<Setter TargetName="ToggleButton" Property="BorderBrush" Value="#EEEEEE"/>
+							</Trigger>
+							<Trigger Property="IsEnabled" Value="False">
+								<Setter TargetName="ComboArrow" Property="Fill" Value="#888888"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+		<Style x:Key="NetMonListViewStyle" TargetType="{x:Type ListView}">
+			<Setter Property="Background" Value="#333333"/>
+			<Setter Property="Foreground" Value="#EEEEEE"/>
+			<Setter Property="FontWeight" Value="Normal"/>
+			<Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+			<Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Hidden"/>
+			<Setter Property="ScrollViewer.CanContentScroll" Value="False"/>
+			<Setter Property="AlternationCount" Value="2"/>
+			<Setter Property="ItemContainerStyle">
+				<Setter.Value>
+					<Style TargetType="{x:Type ListViewItem}">
+						<Setter Property="Background" Value="Transparent"/>
+						<Setter Property="Foreground" Value="#EEEEEE"/>
+						<Setter Property="BorderBrush" Value="Transparent"/>
+						<Setter Property="BorderThickness" Value="0.70"/>
+						<Setter Property="Template">
+							<Setter.Value>
+								<ControlTemplate TargetType="{x:Type ListViewItem}">
+									<Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}">
+										<GridViewRowPresenter HorizontalAlignment="Stretch" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Width="Auto" Margin="0" Content="{TemplateBinding Content}"/>
+									</Border>
+									<ControlTemplate.Triggers>
+										<Trigger Property="ItemsControl.AlternationIndex" Value="0">
+											<Setter Property="Background" Value="#111111"/>
+										</Trigger>
+										<Trigger Property="ItemsControl.AlternationIndex" Value="1">
+											<Setter Property="Background" Value="#000000"/>
+										</Trigger>
+										<Trigger Property="IsMouseOver" Value="True">
+											<Setter Property="Background" Value="#4000B7FF"/>
+											<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+										</Trigger>
+										<MultiTrigger>
+											<MultiTrigger.Conditions>
+												<Condition Property="IsSelected" Value="true"/>
+												<Condition Property="Selector.IsSelectionActive" Value="true"/>
+											</MultiTrigger.Conditions>
+											<Setter Property="Background" Value="#4000B7FF"/>
+											<Setter Property="FontWeight" Value="Bold"/>
+											<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+										</MultiTrigger>
+									</ControlTemplate.Triggers>
+								</ControlTemplate>
+							</Setter.Value>
+						</Setter>
+					</Style>
+				</Setter.Value>
+			</Setter>
+		</Style>
+		<Style x:Key="NetMonColumnHeaderStyle" TargetType="{x:Type GridViewColumnHeader}">
+			<Setter Property="Template" Value="{StaticResource NoMouseOverColumnHeaderTemplate}" />
+			<Setter Property="Background" Value="#CCCCCC" />
+			<Setter Property="Foreground" Value="Black" />
+			<Setter Property="BorderBrush" Value="#333333" />
+			<Setter Property="BorderThickness" Value="0,0,2,0" />
+			<Setter Property="Cursor" Value="Arrow" />
+			<Setter Property="FontWeight" Value="Bold"/>
+			<Setter Property="IsHitTestVisible" Value="False" />
+			<Style.Triggers>
+				<Trigger Property="IsMouseOver" Value="True">
+					<Setter Property="Background" Value="#CCCCCC" />
+					<Setter Property="Foreground" Value="Black" />
+					<Setter Property="BorderBrush" Value="#333333" />
+				</Trigger>
+			</Style.Triggers>
+		</Style>
+		<ContextMenu x:Key="NetMonRightClickContextMenu" Style="{StaticResource CustomContextMenuStyle}">
+			<MenuItem Header="    Export    " Name="NetMonExportContext" Style="{StaticResource MainMenuItemStyle}">
+				<MenuItem Header="   HTML   " Name="NetMonExportToHTML" Style="{StaticResource CustomMenuItemStyle}"/>
+				<MenuItem Header="   CSV    " Name="NetMonExportToCSV" Style="{StaticResource CustomMenuItemStyle}"/>
+				<MenuItem Header="   Text   " Name="NetMonExportToText" Style="{StaticResource CustomMenuItemStyle}"/>
+			</MenuItem>
+		</ContextMenu>
+		<ContextMenu x:Key="NetMonDoubleClickContextMenu" Style="{StaticResource CustomContextMenuStyle}">
+			<MenuItem Header="    Copy    " Style="{StaticResource MainMenuItemStyle}">
+				<MenuItem Header="   Local Address  " Name="CopyLocalAddress" Style="{StaticResource CustomMenuItemStyle}"/>
+				<MenuItem Header="   Local Port     " Name="CopyLocalPort" Style="{StaticResource CustomMenuItemStyle}"/>
+				<MenuItem Header="   Remote Address " Name="CopyRemoteAddress" Style="{StaticResource CustomMenuItemStyle}"/>
+				<MenuItem Header="   Remote Port    " Name="CopyRemotePort" Style="{StaticResource CustomMenuItemStyle}"/>
+				<MenuItem Header="   Process Name   " Name="CopyProcessName" Style="{StaticResource CustomMenuItemStyle}"/>
+				<Separator Background="#222222"/>
+				<MenuItem Header="   All            " Name="CopyAll" Style="{StaticResource CustomMenuItemStyle}"/>
+			</MenuItem>
+		</ContextMenu>
 	</Window.Resources>
 	<Border Background="#222222" CornerRadius="5,5,5,5">
 		<Grid>
@@ -1091,7 +1338,7 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 					</Grid.ColumnDefinitions>
 					<Image Name="WindowIconImage" Width="24" Height="24" VerticalAlignment="Center" Margin="8,0,8,0">
 						<Image.Effect>
-							<DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.7" Direction="270" Color="Black"/>
+							<DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.8" Direction="270" Color="Black"/>
 						</Image.Effect>
 					</Image>
 					<TextBlock Name="TitleBar" Foreground="Black" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,0,5,0" Grid.Column="1"/>
@@ -1104,274 +1351,385 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 						<TextBlock Name="domainName" Foreground="Black" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,5,0" Grid.Column="1"/>
 					</Grid>
 					<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Grid.Column="3">
+						<Button Name="ToggleMonitorButton" Background="Transparent" BorderThickness="0" ToolTip="Monitor Mode" Template="{StaticResource NoMouseOverButtonTemplate}">
+							<Button.Effect>
+								<DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.7" Direction="270" Color="Black"/>
+							</Button.Effect>
+							<Button.Resources>
+								<Storyboard x:Key="mouseEnterAnimation">
+									<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-1" Duration="0:0:0.2"/>
+									<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="3" Duration="0:0:0.2"/>
+									<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="3" Duration="0:0:0.2"/>
+								</Storyboard>
+								<Storyboard x:Key="mouseLeaveAnimation">
+									<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+									<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="1" Duration="0:0:0.2"/>
+									<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="4" Duration="0:0:0.2"/>
+								</Storyboard>
+							</Button.Resources>
+							<Button.RenderTransform>
+								<TranslateTransform/>
+							</Button.RenderTransform>
+							<Viewbox Width="35" Height="24">
+								<Canvas Width="35" Height="24">
+									<Canvas Name="HideGraphic" Width="35" Height="24" Visibility="Hidden" IsHitTestVisible="False">
+										<Path Canvas.Left="0" Canvas.Top="0">
+											<Path.Fill>
+												<LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+													<GradientStop Color="#FF66D9FF" Offset="0"/>
+													<GradientStop Color="#FF00BFFF" Offset="0.5"/>
+													<GradientStop Color="#FF0077CC" Offset="1"/>
+												</LinearGradientBrush>
+											</Path.Fill>
+											<Path.Data>
+												M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z
+											</Path.Data>
+										</Path>
+									</Canvas>
+									<Canvas Name="ShowGraphic" Width="35" Height="24" Visibility="Visible" IsHitTestVisible="False">
+										<Path Canvas.Left="0" Canvas.Top="0">
+											<Path.Fill>
+												<LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+													<GradientStop Color="#FFCC66CC" Offset="0"/>
+													<GradientStop Color="#FF800080" Offset="0.5"/>
+													<GradientStop Color="#FF400040" Offset="1"/>
+												</LinearGradientBrush>
+											</Path.Fill>
+											<Path.Data>
+												M3,13H5.79L10.1,4.79L11.28,13.75L14.5,9.66L17.83,13H21V15H17L14.67,12.67L9.92,18.73L8.94,11.31L7,15H3V13Z
+											</Path.Data>
+										</Path>
+									</Canvas>
+								</Canvas>
+							</Viewbox>
+						</Button>
 						<Button Name="btnMinimize" Content="—" Width="40" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
 						<Button Name="btnClose" Content="X" Width="40" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource CloseButtonTemplate}"/>
 					</StackPanel>
 				</Grid>
 			</Border>
-			<Grid Grid.Row="1" Margin="0,0,50,0">
-				<Grid Name="ScanContainer" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,11,0,0">
-					<Button Name="Scan" Width="777" Height="30" Background="#777777" Foreground="#000000" FontWeight="Bold" Template="{StaticResource NoMouseOverButtonTemplate}">
-						<Button.ContextMenu>
+			<Grid Grid.Row="1">
+				<Grid Name="IPScannerContentGrid" Margin="0,0,50,0">
+					<Grid Name="ScanContainer" Grid.Column="0" VerticalAlignment="Top" HorizontalAlignment="Center" Width="777" MinHeight="25" Margin="53,11,0,0">
+						<Button Name="Scan" Width="777" Height="30" Background="#777777" Foreground="#000000" FontWeight="Bold" Template="{StaticResource NoMouseOverButtonTemplate}">
+							<Button.ContextMenu>
+								<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
+									<MenuItem Header="Subnet" Style="{StaticResource MainMenuItemStyle}" Name="ChangeSubnet"/>
+								</ContextMenu>
+							</Button.ContextMenu>
+							<Button.Content>
+								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+									<TextBlock Name="ScanButtonText" Text="Scan" Foreground="#000000" FontWeight="Bold" />
+									<Image Name="scanAdminIcon" Width="16" Height="16" Margin="5,0,0,0" Visibility="Collapsed"/>
+								</StackPanel>
+							</Button.Content>
+							<Button.BorderBrush>
+								<SolidColorBrush x:Name="CycleBrush" Color="White"/>
+							</Button.BorderBrush>
+						</Button>
+						<ProgressBar Name="Progress" Foreground="#FF00BFFF" Background="#777777" Value="0" Maximum="100" Width="777" Height="30" Visibility="Collapsed"/>
+						<TextBlock Name="BarText" Foreground="#000000" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+					</Grid>
+					<ListView Name="listView" Background="#333333" FontWeight="Normal" HorizontalAlignment="Left" Height="400" Margin="19,52,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False" AlternationCount="2">
+						<ListView.ItemContainerStyle>
+							<Style TargetType="{x:Type ListViewItem}">
+								<Setter Property="Background" Value="Transparent" />
+								<Setter Property="Foreground" Value="#EEEEEE"/>
+								<Setter Property="BorderBrush" Value="Transparent"/>
+								<Setter Property="BorderThickness" Value="0.70"/>
+								<Setter Property="Template">
+									<Setter.Value>
+										<ControlTemplate TargetType="{x:Type ListViewItem}">
+											<Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}">
+												<GridViewRowPresenter HorizontalAlignment="Stretch" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Width="Auto" Margin="0" Content="{TemplateBinding Content}"/>
+											</Border>
+											<ControlTemplate.Triggers>
+												<Trigger Property="ItemsControl.AlternationIndex" Value="0">
+													<Setter Property="Background" Value="#111111"/>
+													<Setter Property="Foreground" Value="#EEEEEE"/>
+												</Trigger>
+												<Trigger Property="ItemsControl.AlternationIndex" Value="1">
+													<Setter Property="Background" Value="#000000"/>
+													<Setter Property="Foreground" Value="#EEEEEE"/>
+												</Trigger>
+												<Trigger Property="IsMouseOver" Value="True">
+													<Setter Property="Background" Value="#4000B7FF"/>
+													<Setter Property="Foreground" Value="#EEEEEE"/>
+													<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+												</Trigger>
+												<MultiTrigger>
+													<MultiTrigger.Conditions>
+														<Condition Property="IsSelected" Value="true"/>
+														<Condition Property="Selector.IsSelectionActive" Value="true"/>
+													</MultiTrigger.Conditions>
+													<Setter Property="Background" Value="#4000B7FF"/>
+													<Setter Property="Foreground" Value="#EEEEEE"/>
+													<Setter Property="FontWeight" Value="Bold"/>
+													<Setter Property="BorderBrush" Value="#FF00BFFF"/>
+												</MultiTrigger>
+											</ControlTemplate.Triggers>
+										</ControlTemplate>
+									</Setter.Value>
+								</Setter>
+							</Style>
+						</ListView.ItemContainerStyle>
+						<ListView.View>
+							<GridView>
+								<GridViewColumn Header="MAC Address" DisplayMemberBinding="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+								<GridViewColumn Header="Vendor" DisplayMemberBinding="{Binding Vendor}" Width="230" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+								<GridViewColumn Header="IP Address" Width="190" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}">
+									<GridViewColumn.CellTemplate>
+										<DataTemplate>
+											<StackPanel Orientation="Horizontal">
+												<ContentControl Content="{Binding PingImage}" Width="16" Height="16" Margin="0,0,10,0"/>
+												<TextBlock Text="{Binding IPaddress}"/>
+											</StackPanel>
+										</DataTemplate>
+									</GridViewColumn.CellTemplate>
+								</GridViewColumn>
+								<GridViewColumn Header="Host Name" DisplayMemberBinding="{Binding HostName}" Width="284" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
+							</GridView>
+						</ListView.View>
+						<ListView.ContextMenu>
 							<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
-								<MenuItem Header="Subnet" Style="{StaticResource MainMenuItemStyle}" Name="ChangeSubnet"/>
+								<MenuItem Header="    Export    " Name="ExportContext" Style="{StaticResource MainMenuItemStyle}">
+									<MenuItem Header="   HTML   " Name="ExportToHTML" Style="{StaticResource CustomMenuItemStyle}"/>
+									<MenuItem Header="   CSV    " Name="ExportToCSV" Style="{StaticResource CustomMenuItemStyle}"/>
+									<MenuItem Header="   Text   " Name="ExportToText" Style="{StaticResource CustomMenuItemStyle}"/>
+								</MenuItem>
 							</ContextMenu>
-						</Button.ContextMenu>
-						<Button.Content>
-							<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-								<TextBlock Name="ScanButtonText" Text="Scan" Foreground="#000000" FontWeight="Bold" />
-								<Image Name="scanAdminIcon" Width="16" Height="16" Margin="5,0,0,0" Visibility="Collapsed"/>
-							</StackPanel>
-						</Button.Content>
-						<Button.BorderBrush>
-							<SolidColorBrush x:Name="CycleBrush" Color="White"/>
-						</Button.BorderBrush>
-					</Button>
-					<ProgressBar Name="Progress" Foreground="#FF00BFFF" Background="#777777" Value="0" Maximum="100" Width="777" Height="30" Visibility="Collapsed"/>
-					<TextBlock Name="BarText" Foreground="#000000" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+						</ListView.ContextMenu>
+					</ListView>
+					<TextBlock Name="TotalListed" Foreground="{x:Static SystemColors.GrayTextBrush}" FontWeight="Normal" FontSize="11" Margin="55,453,0,0" HorizontalAlignment="Center"/>
+					<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
+						<Border Name="PopupBorder" CornerRadius="5" Width="350" Height="240" BorderThickness="0.70">
+							<Border.BorderBrush>
+								<SolidColorBrush Color="#CCCCCC"/>
+							</Border.BorderBrush>
+							<Grid Background="Transparent">
+								<Grid.RowDefinitions>
+									<RowDefinition Height="Auto"/>
+									<RowDefinition Height="*"/>
+								</Grid.RowDefinitions>
+								<StackPanel Margin="10" Grid.Row="0">
+									<StackPanel Orientation="Horizontal">
+										<ContentControl Name="pingStatusImage" Width="12" Height="12" Margin="15,10,10,0"/>
+										<TextBlock Name="pingStatusText" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Center" Margin="0,8,0,0"/>
+									</StackPanel>
+								</StackPanel>
+								<StackPanel Margin="10" Grid.Row="1">
+									<TextBlock Name="pHost" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Margin="15,0,0,0"/>
+									<StackPanel Orientation="Horizontal">
+										<TextBlock Name="pIP" FontSize="14" Foreground="#EEEEEE" Margin="15,2,5,2" />
+										<Button Name="btnPortScan" Width="13" Height="13" ToolTip="Scan Ports" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="True" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+											<Button.Effect>
+												<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+											</Button.Effect>
+											<Button.Resources>
+												<Storyboard x:Key="mouseEnterAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-1" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="3" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="3" Duration="0:0:0.2"/>
+												</Storyboard>
+												<Storyboard x:Key="mouseLeaveAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="1.5" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="1.5" Duration="0:0:0.2"/>
+												</Storyboard>
+											</Button.Resources>
+											<Button.RenderTransform>
+												<TranslateTransform/>
+											</Button.RenderTransform>
+											<Viewbox Width="13" Height="13">
+												<Path>
+													<Path.Fill>
+														<LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+															<GradientStop Color="#FF66D9FF" Offset="0"/>
+															<GradientStop Color="#FF00BFFF" Offset="0.5"/>
+															<GradientStop Color="#FF0077CC" Offset="1"/>
+														</LinearGradientBrush>
+													</Path.Fill>
+													<Path.Data>
+														M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z
+													</Path.Data>
+												</Path>
+											</Viewbox>
+										</Button>
+									</StackPanel>
+									<TextBlock Name="pMAC" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
+									<TextBlock Name="pVendor" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
+									<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,28,0,0">
+										<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
+											<Button.Effect>
+												<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+											</Button.Effect>
+											<Button.Resources>
+												<Storyboard x:Key="mouseEnterAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+												</Storyboard>
+												<Storyboard x:Key="mouseLeaveAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+												</Storyboard>
+											</Button.Resources>
+											<Button.RenderTransform>
+												<TranslateTransform/>
+											</Button.RenderTransform>
+										</Button>
+										<Button Name="btnWebInterface" Width="40" Height="32" ToolTip="Connect via Web Interface" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
+											<Button.Effect>
+												<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+											</Button.Effect>
+											<Button.Resources>
+												<Storyboard x:Key="mouseEnterAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+												</Storyboard>
+												<Storyboard x:Key="mouseLeaveAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+												</Storyboard>
+											</Button.Resources>
+											<Button.RenderTransform>
+												<TranslateTransform/>
+											</Button.RenderTransform>
+										</Button>
+										<Button Name="btnShare" Width="40" Height="32" ToolTip="Connect via Share" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+											<Button.Effect>
+												<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+											</Button.Effect>
+											<Button.Resources>
+												<Storyboard x:Key="mouseEnterAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+												</Storyboard>
+												<Storyboard x:Key="mouseLeaveAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+												</Storyboard>
+											</Button.Resources>
+											<Button.RenderTransform>
+												<TranslateTransform/>
+											</Button.RenderTransform>
+										</Button>
+										<Button Name="btnNone" Width="40" Height="32" ToolTip="No Connections Found" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
+											<Button.Effect>
+												<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
+											</Button.Effect>
+											<Button.Resources>
+												<Storyboard x:Key="mouseEnterAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
+												</Storyboard>
+												<Storyboard x:Key="mouseLeaveAnimation">
+													<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
+													<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
+												</Storyboard>
+											</Button.Resources>
+											<Button.RenderTransform>
+												<TranslateTransform/>
+											</Button.RenderTransform>
+											<Viewbox Width="28" Height="28">
+												<Path>
+													<Path.Fill>
+														<LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+															<GradientStop Color="#FF66D9FF" Offset="0"/>
+															<GradientStop Color="#FF00BFFF" Offset="0.5"/>
+															<GradientStop Color="#FF0077CC" Offset="1"/>
+														</LinearGradientBrush>
+													</Path.Fill>
+													<Path.Data>
+														M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M7,13H17V11H7
+													</Path.Data>
+												</Path>
+											</Viewbox>
+										</Button>
+									</StackPanel>
+								</StackPanel>
+								<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,10,10,10" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}" Panel.ZIndex="1"/>
+							</Grid>
+						</Border>
+						<Canvas.ContextMenu>
+							<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
+								<MenuItem Header="    Copy    " Style="{StaticResource MainMenuItemStyle}">
+									<MenuItem Header="   IP Address  " Name="PopupContextCopyIP" Style="{StaticResource CustomMenuItemStyle}"/>
+									<MenuItem Header="   Hostname    " Name="PopupContextCopyHostname" Style="{StaticResource CustomMenuItemStyle}"/>
+									<MenuItem Header="   MAC Address " Name="PopupContextCopyMAC" Style="{StaticResource CustomMenuItemStyle}"/>
+									<MenuItem Header="   Vendor      " Name="PopupContextCopyVendor" Style="{StaticResource CustomMenuItemStyle}"/>
+									<Separator Background="#222222"/>
+									<MenuItem Header="   All         " Name="PopupContextCopyAll" Style="{StaticResource CustomMenuItemStyle}"/>
+								</MenuItem>
+							</ContextMenu>
+						</Canvas.ContextMenu>
+					</Canvas>
 				</Grid>
-				<ListView Name="listView" Background="#333333" FontWeight="Normal" HorizontalAlignment="Left" Height="400" Margin="19,52,-140,0" VerticalAlignment="Top" Width="860" VerticalContentAlignment="Top" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="False" AlternationCount="2">
-					<ListView.ItemContainerStyle>
-						<Style TargetType="{x:Type ListViewItem}">
-							<Setter Property="Background" Value="Transparent" />
-							<Setter Property="Foreground" Value="#EEEEEE"/>
-							<Setter Property="BorderBrush" Value="Transparent"/>
-							<Setter Property="BorderThickness" Value="0.70"/>
-							<Setter Property="Template">
-								<Setter.Value>
-									<ControlTemplate TargetType="{x:Type ListViewItem}">
-										<Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}">
-											<GridViewRowPresenter HorizontalAlignment="Stretch" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Width="Auto" Margin="0" Content="{TemplateBinding Content}"/>
-										</Border>
-										<ControlTemplate.Triggers>
-											<Trigger Property="ItemsControl.AlternationIndex" Value="0">
-												<Setter Property="Background" Value="#111111"/>
-												<Setter Property="Foreground" Value="#EEEEEE"/>
-											</Trigger>
-											<Trigger Property="ItemsControl.AlternationIndex" Value="1">
-												<Setter Property="Background" Value="#000000"/>
-												<Setter Property="Foreground" Value="#EEEEEE"/>
-											</Trigger>
-											<Trigger Property="IsMouseOver" Value="True">
-												<Setter Property="Background" Value="#4000B7FF"/>
-												<Setter Property="Foreground" Value="#EEEEEE"/>
-												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
-											</Trigger>
-											<MultiTrigger>
-												<MultiTrigger.Conditions>
-													<Condition Property="IsSelected" Value="true"/>
-													<Condition Property="Selector.IsSelectionActive" Value="true"/>
-												</MultiTrigger.Conditions>
-												<Setter Property="Background" Value="#4000B7FF"/>
-												<Setter Property="Foreground" Value="#EEEEEE"/>
-												<Setter Property="FontWeight" Value="Bold"/>
-												<Setter Property="BorderBrush" Value="#FF00BFFF"/>
-											</MultiTrigger>
-										</ControlTemplate.Triggers>
-									</ControlTemplate>
-								</Setter.Value>
-							</Setter>
-						</Style>
-					</ListView.ItemContainerStyle>
-					<ListView.View>
-						<GridView>
-							<GridViewColumn Header="MAC Address" DisplayMemberBinding="{Binding MACaddress}" Width="150" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-							<GridViewColumn Header="Vendor" DisplayMemberBinding="{Binding Vendor}" Width="230" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-							<GridViewColumn Header="IP Address" Width="190" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}">
-								<GridViewColumn.CellTemplate>
-									<DataTemplate>
-										<StackPanel Orientation="Horizontal">
-											<ContentControl Content="{Binding PingImage}" Width="16" Height="16" Margin="0,0,10,0"/>
-											<TextBlock Text="{Binding IPaddress}"/>
-										</StackPanel>
-									</DataTemplate>
-								</GridViewColumn.CellTemplate>
-							</GridViewColumn>
-							<GridViewColumn Header="Host Name" DisplayMemberBinding="{Binding HostName}" Width="284" HeaderContainerStyle="{StaticResource ColumnHeaderStyle}" />
-						</GridView>
-					</ListView.View>
-					<ListView.ContextMenu>
-						<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
-							<MenuItem Header="    Export    " Name="ExportContext" Style="{StaticResource MainMenuItemStyle}">
-								<MenuItem Header="   HTML   " Name="ExportToHTML" Style="{StaticResource CustomMenuItemStyle}"/>
-								<MenuItem Header="   CSV    " Name="ExportToCSV" Style="{StaticResource CustomMenuItemStyle}"/>
-								<MenuItem Header="   Text   " Name="ExportToText" Style="{StaticResource CustomMenuItemStyle}"/>
-							</MenuItem>
-						</ContextMenu>
-					</ListView.ContextMenu>
-				</ListView>
-				<TextBlock Name="TotalListed" Foreground="{x:Static SystemColors.GrayTextBrush}" FontWeight="Normal" FontSize="11" Margin="55,453,0,0" HorizontalAlignment="Center"/>
-				<Canvas Name="PopupCanvas" Background="#222222" Visibility="Hidden" Width="350" Height="240" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
-					<Border Name="PopupBorder" CornerRadius="5" Width="350" Height="240" BorderThickness="0.70">
-						<Border.BorderBrush>
-							<SolidColorBrush Color="#CCCCCC"/>
-						</Border.BorderBrush>
-						<Grid Background="Transparent">
-							<Grid.RowDefinitions>
-								<RowDefinition Height="Auto"/>
-								<RowDefinition Height="*"/>
-							</Grid.RowDefinitions>
-							<StackPanel Margin="10" Grid.Row="0">
-								<StackPanel Orientation="Horizontal">
-									<ContentControl Name="pingStatusImage" Width="12" Height="12" Margin="15,10,10,0"/>
-									<TextBlock Name="pingStatusText" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" VerticalAlignment="Center" Margin="0,8,0,0"/>
-								</StackPanel>
-							</StackPanel>
-							<StackPanel Margin="10" Grid.Row="1">
-								<TextBlock Name="pHost" FontSize="14" Foreground="#EEEEEE" FontWeight="Bold" Margin="15,0,0,0"/>
-								<StackPanel Orientation="Horizontal">
-									<TextBlock Name="pIP" FontSize="14" Foreground="#EEEEEE" Margin="15,2,5,2" />
-									<Button Name="btnPortScan" Width="13" Height="13" ToolTip="Scan Ports" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="True" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
-										<Button.Effect>
-											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-										</Button.Effect>
-										<Button.Resources>
-											<Storyboard x:Key="mouseEnterAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-1" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="3" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="3" Duration="0:0:0.2"/>
-											</Storyboard>
-											<Storyboard x:Key="mouseLeaveAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="1.5" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="1.5" Duration="0:0:0.2"/>
-											</Storyboard>
-										</Button.Resources>
-										<Button.RenderTransform>
-											<TranslateTransform/>
-										</Button.RenderTransform>
-										<Viewbox Width="13" Height="13">
-											<Path>
-												<Path.Fill>
-													<LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-														<GradientStop Color="#FF66D9FF" Offset="0"/>
-														<GradientStop Color="#FF00BFFF" Offset="0.5"/>
-														<GradientStop Color="#FF0077CC" Offset="1"/>
-													</LinearGradientBrush>
-												</Path.Fill>
-												<Path.Data>
-													M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5A6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z
-												</Path.Data>
-											</Path>
-										</Viewbox>
-									</Button>
-								</StackPanel>
-								<TextBlock Name="pMAC" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
-								<TextBlock Name="pVendor" FontSize="14" Foreground="#EEEEEE" Margin="15,0,0,0" />
-								<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,28,0,0">
-									<Button Name="btnRDP" Width="40" Height="32" ToolTip="Connect via RDP" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
-										<Button.Effect>
-											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-										</Button.Effect>
-										<Button.Resources>
-											<Storyboard x:Key="mouseEnterAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
-											</Storyboard>
-											<Storyboard x:Key="mouseLeaveAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
-											</Storyboard>
-										</Button.Resources>
-										<Button.RenderTransform>
-											<TranslateTransform/>
-										</Button.RenderTransform>
-									</Button>
-									<Button Name="btnWebInterface" Width="40" Height="32" ToolTip="Connect via Web Interface" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Margin="0,0,25,0" Template="{StaticResource NoMouseOverButtonTemplate}">
-										<Button.Effect>
-											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-										</Button.Effect>
-										<Button.Resources>
-											<Storyboard x:Key="mouseEnterAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
-											</Storyboard>
-											<Storyboard x:Key="mouseLeaveAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
-											</Storyboard>
-										</Button.Resources>
-										<Button.RenderTransform>
-											<TranslateTransform/>
-										</Button.RenderTransform>
-									</Button>
-									<Button Name="btnShare" Width="40" Height="32" ToolTip="Connect via Share" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
-										<Button.Effect>
-											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-										</Button.Effect>
-										<Button.Resources>
-											<Storyboard x:Key="mouseEnterAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
-											</Storyboard>
-											<Storyboard x:Key="mouseLeaveAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
-											</Storyboard>
-										</Button.Resources>
-										<Button.RenderTransform>
-											<TranslateTransform/>
-										</Button.RenderTransform>
-									</Button>
-									<Button Name="btnNone" Width="40" Height="32" ToolTip="No Connections Found" BorderThickness="0" BorderBrush="#FF00BFFF" IsEnabled="False" Background="Transparent" Template="{StaticResource NoMouseOverButtonTemplate}">
-										<Button.Effect>
-											<DropShadowEffect ShadowDepth="5" BlurRadius="5" Color="Black" Direction="270"/>
-										</Button.Effect>
-										<Button.Resources>
-											<Storyboard x:Key="mouseEnterAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="-3" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="10" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="10" Duration="0:0:0.2"/>
-											</Storyboard>
-											<Storyboard x:Key="mouseLeaveAnimation">
-												<DoubleAnimation Storyboard.TargetProperty="RenderTransform.(TranslateTransform.Y)" To="0" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.ShadowDepth" To="5" Duration="0:0:0.2"/>
-												<DoubleAnimation Storyboard.TargetProperty="Effect.BlurRadius" To="5" Duration="0:0:0.2"/>
-											</Storyboard>
-										</Button.Resources>
-										<Button.RenderTransform>
-											<TranslateTransform/>
-										</Button.RenderTransform>
-										<Viewbox Width="28" Height="28">
-											<Path>
-												<Path.Fill>
-													<LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-														<GradientStop Color="#FF66D9FF" Offset="0"/>
-														<GradientStop Color="#FF00BFFF" Offset="0.5"/>
-														<GradientStop Color="#FF0077CC" Offset="1"/>
-													</LinearGradientBrush>
-												</Path.Fill>
-												<Path.Data>
-													M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M7,13H17V11H7
-												</Path.Data>
-											</Path>
-										</Viewbox>
-									</Button>
-								</StackPanel>
-							</StackPanel>
-							<Button Name="pCloseButton" Background="#111111" Foreground="#EEEEEE" BorderThickness="0" Content="X" Margin="300,10,10,10" Height="18" Width="22" Template="{StaticResource NoMouseOverButtonTemplate}" Panel.ZIndex="1"/>
-						</Grid>
-					</Border>
-					<Canvas.ContextMenu>
-						<ContextMenu Style="{StaticResource CustomContextMenuStyle}">
-							<MenuItem Header="    Copy    " Style="{StaticResource MainMenuItemStyle}">
-								<MenuItem Header="   IP Address  " Name="PopupContextCopyIP" Style="{StaticResource CustomMenuItemStyle}"/>
-								<MenuItem Header="   Hostname    " Name="PopupContextCopyHostname" Style="{StaticResource CustomMenuItemStyle}"/>
-								<MenuItem Header="   MAC Address " Name="PopupContextCopyMAC" Style="{StaticResource CustomMenuItemStyle}"/>
-								<MenuItem Header="   Vendor      " Name="PopupContextCopyVendor" Style="{StaticResource CustomMenuItemStyle}"/>
-								<Separator Background="#111111"/>
-								<MenuItem Header="   All         " Name="PopupContextCopyAll" Style="{StaticResource CustomMenuItemStyle}"/>
-							</MenuItem>
-						</ContextMenu>
-					</Canvas.ContextMenu>
-				</Canvas>
-				<Canvas Name="PopupCanvas2" Background="#222222" Visibility="Hidden" Width="330" Height="220" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="53,40,0,0">
+				<Grid Name="NetMonContentGrid" Margin="10,10,10,0" Visibility="Hidden" Panel.ZIndex="1">
+					<Grid.RowDefinitions>
+						<RowDefinition Height="Auto"/>
+						<RowDefinition Height="*"/>
+						<RowDefinition Height="280"/>
+					</Grid.RowDefinitions>
+					<ComboBox Name="AdapterDropdown" Grid.Row="0" HorizontalAlignment="Left" Width="150" Margin="17,3,0,0" Style="{StaticResource NetMonComboBoxStyle}"/>
+					<StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,3,10,0">
+						<StackPanel Orientation="Horizontal" Margin="5">
+							<TextBlock Text="Connection / Performance Monitor" Foreground="#FFFFFFFF" FontSize="12" FontWeight="Bold" Margin="10,0,0,0" HorizontalAlignment="Center"/>
+						</StackPanel>
+					</StackPanel>
+					<StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,3,10,0">
+						<StackPanel Orientation="Horizontal" Margin="5">
+							<Rectangle Width="20" Height="2" Fill="#FF00BFFF" Margin="0,0,5,0"/>
+							<TextBlock Text="Download" Foreground="#FFFFFFFF" FontSize="12"/>
+						</StackPanel>
+						<StackPanel Orientation="Horizontal" Margin="5">
+							<Rectangle Width="20" Height="2" Fill="#FFB200B2" Margin="0,0,5,0"/>
+							<TextBlock Text="Upload" Foreground="#FFFFFFFF" FontSize="12"/>
+						</StackPanel>
+					</StackPanel>
+					<Grid Grid.Row="1">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="30"/>
+							<ColumnDefinition Width="*"/>
+						</Grid.ColumnDefinitions>
+						<Grid.RowDefinitions>
+							<RowDefinition Height="100"/>
+							<RowDefinition Height="Auto"/>
+						</Grid.RowDefinitions>
+						<TextBlock Name="YAxisTitle" Grid.Column="0" Grid.Row="0" Text="Speed" Foreground="#FFFFFFFF" FontSize="12" Margin="-3,73,0,0">
+							<TextBlock.RenderTransform>
+								<RotateTransform Angle="-90"/>
+							</TextBlock.RenderTransform>
+						</TextBlock>
+						<Canvas Name="GraphCanvas" Grid.Column="1" Grid.Row="0" Width="830" Height="100" Background="#FF252526" ClipToBounds="True" Margin="-29,13,0,0">
+							<TextBlock Name="YLabelMax" Canvas.Left="5" Canvas.Top="0" Foreground="#FFFFFFFF" FontSize="10"/>
+							<TextBlock Name="YLabel75" Canvas.Left="5" Canvas.Top="25" Foreground="#FFFFFFFF" FontSize="10"/>
+							<TextBlock Name="YLabel50" Canvas.Left="5" Canvas.Top="50" Foreground="#FFFFFFFF" FontSize="10"/>
+							<TextBlock Name="YLabel25" Canvas.Left="5" Canvas.Top="75" Foreground="#FFFFFFFF" FontSize="10"/>
+						</Canvas>
+						<TextBlock Name="XAxisTitle" Grid.Column="1" Grid.Row="1" Text="Time (60s)" Foreground="#FFFFFFFF" FontSize="12" Margin="382,13,0,0"/>
+					</Grid>
+					<ListView Name="NetMonTCPList" Grid.Row="2" Margin="9,-19,11,18" Style="{StaticResource NetMonListViewStyle}">
+						<ListView.View>
+							<GridView>
+								<GridViewColumn Header="Local Address" DisplayMemberBinding="{Binding LocalAddress}" Width="120" HeaderContainerStyle="{StaticResource NetMonColumnHeaderStyle}"/>
+								<GridViewColumn Header="Local Port" DisplayMemberBinding="{Binding LocalPort}" Width="120" HeaderContainerStyle="{StaticResource NetMonColumnHeaderStyle}"/>
+								<GridViewColumn Header="Remote Address" DisplayMemberBinding="{Binding RemoteAddress}" Width="120" HeaderContainerStyle="{StaticResource NetMonColumnHeaderStyle}"/>
+								<GridViewColumn Header="Remote Port" DisplayMemberBinding="{Binding RemotePort}" Width="120" HeaderContainerStyle="{StaticResource NetMonColumnHeaderStyle}"/>
+								<GridViewColumn Header="Process" DisplayMemberBinding="{Binding ProcessName}" Width="375" HeaderContainerStyle="{StaticResource NetMonColumnHeaderStyle}"/>
+							</GridView>
+						</ListView.View>
+					</ListView>
+					<TextBlock Name="NetMonTotalConnections" Foreground="{x:Static SystemColors.GrayTextBrush}" FontWeight="Normal" FontSize="11" Margin="0,263,0,0" HorizontalAlignment="Center" Grid.Row="2"/>
+				</Grid>
+				<Canvas Name="PopupCanvas2" Background="#222222" Visibility="Hidden" Width="330" Height="220" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" Panel.ZIndex="10">
 					<Border Name="PopupBorder2" Width="330" Height="220" BorderThickness="0.70" CornerRadius="5" Background="#222222" Opacity="0.95">
 						<Border.BorderBrush>
 							<SolidColorBrush Color="#CCCCCC"/>
@@ -1584,25 +1942,22 @@ $xaml.SelectNodes("//*[@Name]") | %{Set-Variable -Name "$($_.Name)" -Value $Main
 $Main.Title = "$AppId"
 $titleBar.Text = "$AppId"
 
+# Window Closing
 $Main.Add_Closing({
-	# Force close any running jobs
-	Get-Job | Remove-Job -Force
-	# Clean up RunspacePool if it exists
-	if ($RunspacePool) {
-		try {
-			$RunspacePool.Close()
-		}
-		catch {
-			#TO-DO Add logging, eg: Add-Content -Path "C:\path\to\logfile.txt" -Value "Error closing RunspacePool: $_"
-			$null = $_
-		}
-		finally {
-			$RunspacePool.Dispose()
-		}
+	if ($global:timer) {
+		try { $global:timer.Stop() } catch { Write-Host "Error stopping timer: $_" }
 	}
-	$Main.Add_Closed({
-		[Environment]::Exit(0)
-	})
+	if ($Runspace) {
+		try {
+			$global:Runspace.EndInvoke($global:netMonHandle)
+			$global:Runspace.Dispose()
+		} catch { Write-Host "Error disposing netMonHandle: $_" }
+	}
+	Get-Job | Remove-Job -Force
+	if ($RunspacePool) {
+		try { $RunspacePool.Close(); $RunspacePool.Dispose() } catch { Write-Host "Error disposing RunspacePool: $_" }
+	}
+	$Main.Add_Closed({ [Environment]::Exit(0) })
 })
 
 $Main.Add_ContentRendered({
@@ -1655,6 +2010,437 @@ $Main.Add_ContentRendered({
 	@('subnetOctet1', 'subnetOctet2', 'subnetOctet3') | ForEach-Object {
 		Initialize-IPCombo -comboBox ($Main.FindName($_))
 	}
+
+	# Register ToggleMonitorButton mouse event handlers
+	$ToggleMonitorButton.Add_MouseEnter({
+		$storyboard = $ToggleMonitorButton.Resources["mouseEnterAnimation"]
+		$storyboard.Begin($ToggleMonitorButton)
+	})
+	$ToggleMonitorButton.Add_MouseLeave({
+		$storyboard = $ToggleMonitorButton.Resources["mouseLeaveAnimation"]
+		$storyboard.Begin($ToggleMonitorButton)
+	})
+
+	# Initialize Monitor Mode Variables
+	$global:adapters = @()
+	$global:adapterStats = @{}
+	$global:speedHistory = @{}
+	$global:lastTime = $null
+	$global:canvasWidth = 830
+	$global:canvasHeight = 100
+	$global:maxPoints = 60
+	$global:historySize = 2
+	$global:resetThreshold = 100000
+	$global:maxSpeed = 1000
+	$global:LastSelectedItem = $null
+
+	# Start Monitor Mode Background Task
+	try {
+		if (-not $RunspacePool) {
+			Show-Popup2 -Message "RunspacePool is not initialized." -Title "Error:"
+			return
+		}
+		if ($RunspacePool.RunspacePoolStateInfo.State -ne 'Opened') {
+			Show-Popup2 -Message "RunspacePool is not open." -Title "Error:"
+			return
+		}
+		$global:netMonHandle = Start-NetMonBackgroundTask
+	} catch {
+		Show-Popup2 -Message "Failed to start Monitor Mode background task: $_" -Title "Error:"
+		return
+	}
+
+	# Initialize Adapters
+	try {
+		$initialAdapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" -and $_.InterfaceDescription -notlike "*Loopback*" -and $_.InterfaceDescription -notlike "*ISATAP*" }
+		if (-not $initialAdapters) {
+			Show-Popup2 -Message "No network adapters available." -Title "Error:"
+			return
+		}
+		foreach ($adapter in $initialAdapters) {
+			$adapterName = $adapter.Name
+			$global:adapters += $adapterName
+			$global:adapterStats[$adapterName] = @{
+				RxHistory = @()
+				TxHistory = @()
+				TimeHistory = @()
+				LastRxBytes = 0
+				LastTxBytes = 0
+			}
+			$global:speedHistory[$adapterName] = @{
+				RxSpeeds = @()
+				TxSpeeds = @()
+			}
+			if ($AdapterDropdown) {
+				$AdapterDropdown.Items.Add($adapterName) | Out-Null
+			}
+		}
+		if ($AdapterDropdown -and $AdapterDropdown.Items.Count -gt 0) {
+			$AdapterDropdown.SelectedIndex = 0
+		}
+	} catch {
+		Show-Popup2 -Message "Error initializing adapters: $_" -Title "Error:"
+	}
+
+	# Initialize Timer
+	$global:timer = New-Object System.Windows.Threading.DispatcherTimer
+	$global:timer.Interval = [TimeSpan]::FromMilliseconds(1000)
+	$global:timer.Add_Tick({
+		try {
+			if ($global:syncHash.Error) {
+				if ($NetMonContentGrid -and $NetMonContentGrid.Visibility -eq [System.Windows.Visibility]::Visible) {
+					Show-Popup2 -Message "Background task error: $($global:syncHash.Error)" -Title "Error:"
+				}
+				return
+			}
+			$statsPerAdapter = $global:syncHash.NetworkStats
+			$tcpConnections = $global:syncHash.TCPConnections
+			$currentTime = [DateTime]::Now
+			if ($null -eq $global:lastTime) { $global:lastTime = $currentTime }
+			$deltaTime = [Math]::Max(0.2, ($currentTime - $global:lastTime).TotalSeconds)
+			$global:lastTime = $currentTime
+
+			foreach ($adapterName in $global:adapters) {
+				$adapterStat = $global:adapterStats[$adapterName]
+				if ($statsPerAdapter.ContainsKey($adapterName)) {
+					$currentStats = $statsPerAdapter[$adapterName]
+					$rxBytes = $currentStats.RxBytes
+					$txBytes = $currentStats.TxBytes
+					$timestamp = $currentStats.Timestamp
+
+					if ($adapterStat.LastRxBytes -gt 0 -and $adapterStat.LastTxBytes -gt 0) {
+						$resetRx = $rxBytes -lt $adapterStat.LastRxBytes -and ($adapterStat.LastRxBytes - $rxBytes) -gt $global:resetThreshold
+						$resetTx = $txBytes -lt $adapterStat.LastTxBytes -and ($adapterStat.LastTxBytes - $txBytes) -gt $global:resetThreshold
+						if ($resetRx -or $resetTx) {
+							$adapterStat.RxHistory = @()
+							$adapterStat.TxHistory = @()
+							$adapterStat.TimeHistory = @()
+							$global:speedHistory[$adapterName].RxSpeeds = @()
+							$global:speedHistory[$adapterName].TxSpeeds = @()
+						}
+					}
+
+					$adapterStat.RxHistory += $rxBytes
+					$adapterStat.TxHistory += $txBytes
+					$adapterStat.TimeHistory += $timestamp
+					if ($adapterStat.RxHistory.Count -gt $global:historySize) {
+						$adapterStat.RxHistory = $adapterStat.RxHistory | Select-Object -Last $global:historySize
+						$adapterStat.TxHistory = $adapterStat.TxHistory | Select-Object -Last $global:historySize
+						$adapterStat.TimeHistory = $adapterStat.TimeHistory | Select-Object -Last $global:historySize
+					}
+					$adapterStat.LastRxBytes = $rxBytes
+					$adapterStat.LastTxBytes = $txBytes
+
+					$rxSpeed = 0
+					$txSpeed = 0
+					if ($adapterStat.RxHistory.Count -ge 2 -and $adapterStat.TimeHistory.Count -ge 2) {
+						$totalRxDiff = 0
+						$totalTxDiff = 0
+						$totalTicks = 0
+						for ($i = 1; $i -lt $adapterStat.RxHistory.Count; $i++) {
+							$rxDiff = [double]($adapterStat.RxHistory[$i] - $adapterStat.RxHistory[$i-1])
+							$txDiff = [double]($adapterStat.TxHistory[$i] - $adapterStat.TxHistory[$i-1])
+							$tickDiff = [double]($adapterStat.TimeHistory[$i] - $adapterStat.TimeHistory[$i-1])
+							$totalRxDiff += $rxDiff
+							$totalTxDiff += $txDiff
+							$totalTicks += $tickDiff
+						}
+						$totalTime = $totalTicks / 10000000.0
+						if ($totalTime -gt 0) {
+							$rxSpeed = [Math]::Max(0, $totalRxDiff / $totalTime / 1024)
+							$txSpeed = [Math]::Max(0, $totalTxDiff / $totalTime / 1024)
+						}
+					}
+
+					$global:speedHistory[$adapterName].RxSpeeds += $rxSpeed
+					$global:speedHistory[$adapterName].TxSpeeds += $txSpeed
+					if ($global:speedHistory[$adapterName].RxSpeeds.Count -gt $global:maxPoints) {
+						$global:speedHistory[$adapterName].RxSpeeds = $global:speedHistory[$adapterName].RxSpeeds | Select-Object -Last $global:maxPoints
+						$global:speedHistory[$adapterName].TxSpeeds = $global:speedHistory[$adapterName].TxSpeeds | Select-Object -Last $global:maxPoints
+					}
+				}
+			}
+
+			if ($NetMonContentGrid -and $NetMonContentGrid.Visibility -eq [System.Windows.Visibility]::Visible) {
+				$Main.Dispatcher.Invoke([Action]{
+					if (-not $GraphCanvas -or -not $YLabelMax -or -not $YLabel75 -or -not $YLabel50 -or -not $YLabel25 -or -not $NetMonTCPList) {
+						return
+					}
+
+					$childrenToRemove = $GraphCanvas.Children | Where-Object { $_.GetType().Name -eq "Line" }
+					foreach ($child in $childrenToRemove) { $GraphCanvas.Children.Remove($child) }
+
+					$selectedAdapter = if ($AdapterDropdown -and $AdapterDropdown.Items.Count -gt 0) { $AdapterDropdown.SelectedItem } else { $global:adapters[0] }
+					if (-not $selectedAdapter) {
+						Show-Popup2 -Message "No adapter selected." -Title "Warning:"
+						return
+					}
+
+					$rxSpeeds = $global:speedHistory[$selectedAdapter].RxSpeeds
+					$txSpeeds = $global:speedHistory[$selectedAdapter].TxSpeeds
+
+					$maxRx = if ($rxSpeeds) { ($rxSpeeds | Measure-Object -Maximum).Maximum } else { 0 }
+					$maxTx = if ($txSpeeds) { ($txSpeeds | Measure-Object -Maximum).Maximum } else { 0 }
+					$maxSpeedCalc = [Math]::Max($maxRx, $maxTx)
+
+					if ($maxSpeedCalc -le 25) { $global:maxSpeed = 25 }
+					elseif ($maxSpeedCalc -le 250) { $global:maxSpeed = 250 }
+					elseif ($maxSpeedCalc -le 500) { $global:maxSpeed = 500 }
+					elseif ($maxSpeedCalc -le 1000) { $global:maxSpeed = 1000 }
+					else { $global:maxSpeed = [Math]::Ceiling($maxSpeedCalc / 250) * 250 }
+
+					$YLabelMax.Text = Format-Speed -speedInKBs $global:maxSpeed
+					$YLabel75.Text = Format-Speed -speedInKBs ($global:maxSpeed * 0.75)
+					$YLabel50.Text = Format-Speed -speedInKBs ($global:maxSpeed * 0.5)
+					$YLabel25.Text = Format-Speed -speedInKBs ($global:maxSpeed * 0.25)
+
+					$yScale = $global:canvasHeight / $global:maxSpeed
+					$xScale = $global:canvasWidth / $global:maxPoints
+
+					for ($i = 1; $i -le 3; $i++) {
+						$gridLine = New-Object System.Windows.Shapes.Line
+						$gridLine.X1 = 0
+						$gridLine.X2 = $global:canvasWidth
+						$gridLine.Y1 = $i * ($global:canvasHeight / 4)
+						$gridLine.Y2 = $i * ($global:canvasHeight / 4)
+						$gridLine.Stroke = New-Object System.Windows.Media.SolidColorBrush -ArgumentList ([System.Windows.Media.Color]::FromRgb(63, 63, 70))
+						$gridLine.StrokeThickness = 1
+						$GraphCanvas.Children.Add($gridLine)
+					}
+
+					for ($i = 1; $i -lt $rxSpeeds.Count; $i++) {
+						$x1 = $global:canvasWidth - ($rxSpeeds.Count - $i) * $xScale
+						$y1 = $global:canvasHeight - ($rxSpeeds[$i-1] * $yScale)
+						$x2 = $global:canvasWidth - ($rxSpeeds.Count - 1 - $i) * $xScale
+						$y2 = $global:canvasHeight - ($rxSpeeds[$i] * $yScale)
+						$line = New-Object System.Windows.Shapes.Line
+						$line.X1 = $x1; $line.Y1 = $y1; $line.X2 = $x2; $line.Y2 = $y2
+						$line.Stroke = New-Object System.Windows.Media.SolidColorBrush -ArgumentList ([System.Windows.Media.Color]::FromRgb(0, 191, 255))
+						$line.StrokeThickness = 2
+						$GraphCanvas.Children.Add($line)
+					}
+
+					for ($i = 1; $i -lt $txSpeeds.Count; $i++) {
+						$x1 = $global:canvasWidth - ($txSpeeds.Count - $i) * $xScale
+						$y1 = $global:canvasHeight - ($txSpeeds[$i-1] * $yScale)
+						$x2 = $global:canvasWidth - ($txSpeeds.Count - 1 - $i) * $xScale
+						$y2 = $global:canvasHeight - ($txSpeeds[$i] * $yScale)
+						$line = New-Object System.Windows.Shapes.Line
+						$line.X1 = $x1; $line.Y1 = $y1; $line.X2 = $x2; $line.Y2 = $y2
+						$line.Stroke = New-Object System.Windows.Media.SolidColorBrush -ArgumentList ([System.Windows.Media.Color]::FromRgb(178, 0, 178))
+						$line.StrokeThickness = 2
+						$GraphCanvas.Children.Add($line)
+					}
+
+					if ($tcpConnections) {
+						$NetMonTCPList.ItemsSource = $tcpConnections
+						$NetMonTotalConnections.Text = "$($tcpConnections.Count) active connections"
+
+						if ($global:LastSelectedItem) {
+							foreach ($item in $NetMonTCPList.Items) {
+								# Compare key properties to find the matching item
+								if ($item.LocalAddress -eq $global:LastSelectedItem.LocalAddress -and
+									$item.LocalPort -eq $global:LastSelectedItem.LocalPort -and
+									$item.RemoteAddress -eq $global:LastSelectedItem.RemoteAddress -and
+									$item.RemotePort -eq $global:LastSelectedItem.RemotePort -and
+									$item.ProcessName -eq $global:LastSelectedItem.ProcessName) {
+									$NetMonTCPList.SelectedItem = $item
+									break
+								}
+							}
+						}
+					}
+				}, [System.Windows.Threading.DispatcherPriority]::Render)
+			}
+		} catch {
+			if ($NetMonContentGrid -and $NetMonContentGrid.Visibility -eq [System.Windows.Visibility]::Visible) {
+				Show-Popup2 -Message "UI update error: $_" -Title "Error:"
+			}
+		}
+	})
+
+	# Start Timer
+	$global:timer.Start()
+
+	# Toggle Scanner/Monitor Mode button Click Handler
+	$ToggleMonitorButton.Add_Click({
+		try {
+			if (-not $NetMonContentGrid -or -not $IPScannerContentGrid -or -not $HideGraphic -or -not $ShowGraphic) {
+				Show-Popup2 -Message "UI elements not found." -Title "Error:"
+				return
+			}
+			if ($NetMonContentGrid.Visibility -eq [System.Windows.Visibility]::Visible) {
+				$ToggleMonitorButton.ToolTip = "Monitor Mode"
+				$NetMonContentGrid.Visibility = [System.Windows.Visibility]::Hidden
+				$IPScannerContentGrid.Visibility = [System.Windows.Visibility]::Visible
+				$HideGraphic.Visibility = [System.Windows.Visibility]::Hidden
+				$ShowGraphic.Visibility = [System.Windows.Visibility]::Visible
+			} else {
+				$ToggleMonitorButton.ToolTip = "Scanner Mode"
+				$NetMonContentGrid.Visibility = [System.Windows.Visibility]::Visible
+				$IPScannerContentGrid.Visibility = [System.Windows.Visibility]::Hidden
+				$HideGraphic.Visibility = [System.Windows.Visibility]::Visible
+				$ShowGraphic.Visibility = [System.Windows.Visibility]::Hidden
+			}
+		} catch {
+			Show-Popup2 -Message "Error toggling view: $_" -Title "Error:"
+		}
+	})
+
+	# Monitor Mode Context Menu Handlers
+	$contextMenuElements = @('NetMonExportContext', 'CopyLocalAddress', 'CopyLocalPort', 'CopyRemoteAddress', 'CopyRemotePort', 'CopyProcessName', 'CopyAll', 'NetMonExportToHTML', 'NetMonExportToCSV', 'NetMonExportToText')
+
+	$NetMonTCPList.Add_SelectionChanged({
+		$NetMonExportContext.IsEnabled = $NetMonTCPList.Items.Count -gt 0
+	})
+
+	$NetMonTCPList.Add_PreviewMouseLeftButtonUp({
+		param($sender, $e)
+		$originalSource = $e.OriginalSource
+		$listViewItem = $null
+		$currentElement = $originalSource
+		while ($currentElement -ne $null -and $listViewItem -eq $null) {
+			if ($currentElement -is [System.Windows.Controls.ListViewItem]) { $listViewItem = $currentElement }
+			$currentElement = [System.Windows.Media.VisualTreeHelper]::GetParent($currentElement)
+		}
+		if ($listViewItem -ne $null) {
+			$NetMonTCPList.SelectedItems.Clear()
+			$listViewItem.IsSelected = $true
+			$global:LastSelectedItem = $listViewItem.Content
+		}
+		$e.Handled = $true
+	})
+
+	$NetMonTCPList.Add_PreviewMouseRightButtonDown({
+		param($sender, $e)
+		$originalSource = $e.OriginalSource
+		$listViewItem = $null
+		$currentElement = $originalSource
+		while ($currentElement -ne $null -and $listViewItem -eq $null) {
+			if ($currentElement -is [System.Windows.Controls.ListViewItem]) { $listViewItem = $currentElement }
+			$currentElement = [System.Windows.Media.VisualTreeHelper]::GetParent($currentElement)
+		}
+		$NetMonTCPList.SelectedItems.Clear()
+		if ($listViewItem -ne $null) { $listViewItem.IsSelected = $true }
+		$NetMonTCPList.ContextMenu = $Main.FindResource("NetMonRightClickContextMenu")
+		$NetMonTCPList.ContextMenu.IsOpen = $true
+		$e.Handled = $true
+	})
+
+	$NetMonTCPList.Add_MouseDoubleClick({
+		param($sender, $e)
+		$originalSource = $e.OriginalSource
+		$listViewItem = $null
+		$currentElement = $originalSource
+		while ($currentElement -ne $null -and $listViewItem -eq $null) {
+			if ($currentElement -is [System.Windows.Controls.ListViewItem]) { $listViewItem = $currentElement }
+			$currentElement = [System.Windows.Media.VisualTreeHelper]::GetParent($currentElement)
+		}
+		$NetMonTCPList.SelectedItems.Clear()
+		if ($listViewItem -ne $null) {
+			$listViewItem.IsSelected = $true
+			$global:LastSelectedItem = $listViewItem.Content
+			$NetMonTCPList.ContextMenu = $Main.FindResource("NetMonDoubleClickContextMenu")
+			$NetMonTCPList.ContextMenu.IsOpen = $true
+		}
+		$e.Handled = $true
+	})
+
+	$CopyLocalAddress.Add_Click({
+		$item = if ($NetMonTCPList.SelectedItem) { $NetMonTCPList.SelectedItem } else { $global:LastSelectedItem }
+		if ($item) { Set-Clipboard -Value $item.LocalAddress; Show-Popup2 -Message "Local Address copied!" -Title "Info:" }
+		else { Show-Popup2 -Message "No item selected!" -Title "Warning:" }
+	})
+
+	$CopyLocalPort.Add_Click({
+		$item = if ($NetMonTCPList.SelectedItem) { $NetMonTCPList.SelectedItem } else { $global:LastSelectedItem }
+		if ($item) { Set-Clipboard -Value $item.LocalPort; Show-Popup2 -Message "Local Port copied!" -Title "Info:" }
+		else { Show-Popup2 -Message "No item selected!" -Title "Warning:" }
+	})
+
+	$CopyRemoteAddress.Add_Click({
+		$item = if ($NetMonTCPList.SelectedItem) { $NetMonTCPList.SelectedItem } else { $global:LastSelectedItem }
+		if ($item) { Set-Clipboard -Value $item.RemoteAddress; Show-Popup2 -Message "Remote Address copied!" -Title "Info:" }
+		else { Show-Popup2 -Message "No item selected!" -Title "Warning:" }
+	})
+
+	$CopyRemotePort.Add_Click({
+		$item = if ($NetMonTCPList.SelectedItem) { $NetMonTCPList.SelectedItem } else { $global:LastSelectedItem }
+		if ($item) { Set-Clipboard -Value $item.RemotePort; Show-Popup2 -Message "Remote Port copied!" -Title "Info:" }
+		else { Show-Popup2 -Message "No item selected!" -Title "Warning:" }
+	})
+
+	$CopyProcessName.Add_Click({
+		$item = if ($NetMonTCPList.SelectedItem) { $NetMonTCPList.SelectedItem } else { $global:LastSelectedItem }
+		if ($item) { Set-Clipboard -Value $item.ProcessName; Show-Popup2 -Message "Process Name copied!" -Title "Info:" }
+		else { Show-Popup2 -Message "No item selected!" -Title "Warning:" }
+	})
+
+	$CopyAll.Add_Click({
+		$item = if ($NetMonTCPList.SelectedItem) { $NetMonTCPList.SelectedItem } else { $global:LastSelectedItem }
+		if ($item) {
+			$details = "Local Address: $($item.LocalAddress)`nLocal Port: $($item.LocalPort)`nRemote Address: $($item.RemoteAddress)`nRemote Port: $($item.RemotePort)`nProcess Name: $($item.ProcessName)"
+			Set-Clipboard -Value $details
+			Show-Popup2 -Message "All details copied!" -Title "Info:"
+		} else {
+			Show-Popup2 -Message "No item selected!" -Title "Warning:"
+		}
+	})
+
+	$NetMonExportToHTML.Add_Click({
+		if ($NetMonTCPList.Items.Count -eq 0) { Show-Popup2 -Message "No data to export!" -Title "Warning:"; return }
+		$saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+		$saveFileDialog.Filter = "HTML files (*.html)|*.html|All files (*.*)|*.*"
+		$saveFileDialog.FileName = "TCP_Connections"
+		if ($saveFileDialog.ShowDialog() -eq "OK") {
+			$path = $saveFileDialog.FileName
+			try {
+				$htmlContent = "<!DOCTYPE html><html><head><title>TCP Connections</title><style>table, th, td { border: 1px solid black; border-collapse: collapse; padding: 5px; } th { background-color: #f2f2f2; } h1, p { margin: 0; padding: 0; } p { margin-bottom: 2px; } .info-block { margin-bottom: 20px; }</style></head><body><h1>TCP Connections</h1><br><div class='info-block'><p><strong>Date/Time:</strong> $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p><p><strong>Total Connections:</strong> $($NetMonTCPList.Items.Count)</p></div><table><tr><th>Local Address</th><th>Local Port</th><th>Remote Address</th><th>Remote Port</th><th>Process Name</th></tr>"
+				$NetMonTCPList.Items | ForEach-Object { $htmlContent += "<tr><td>$($_.LocalAddress)</td><td>$($_.LocalPort)</td><td>$($_.RemoteAddress)</td><td>$($_.RemotePort)</td><td>$($_.ProcessName)</td></tr>" }
+				$htmlContent += "</table></body></html>"
+				[System.IO.File]::WriteAllText($path, $htmlContent)
+				Show-Popup2 -Message "Export to HTML completed!" -Title "Export:"
+			} catch {
+				Show-Popup2 -Message "Error during export: $_" -Title "ERROR:"
+			}
+		}
+	})
+
+	$NetMonExportToCSV.Add_Click({
+		if ($NetMonTCPList.Items.Count -eq 0) { Show-Popup2 -Message "No data to export!" -Title "Warning:"; return }
+		$saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+		$saveFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+		$saveFileDialog.FileName = "TCP_Connections"
+		if ($saveFileDialog.ShowDialog() -eq "OK") {
+			$path = $saveFileDialog.FileName
+			try {
+				$csvHeader = "Local Address,Local Port,Remote Address,Remote Port,Process Name"
+				$csvContent = $NetMonTCPList.Items | ForEach-Object { "`r`n$($_.LocalAddress.Replace(',','')),$($_.LocalPort),$($_.RemoteAddress.Replace(',','')),$($_.RemotePort),$($_.ProcessName.Replace(',',''))" }
+				[System.IO.File]::WriteAllLines($path, ($csvHeader + $csvContent))
+				Show-Popup2 -Message "Export to CSV completed!" -Title "Export:"
+			} catch {
+				Show-Popup2 -Message "Error during export: $_" -Title "ERROR:"
+			}
+		}
+	})
+
+	$NetMonExportToText.Add_Click({
+		if ($NetMonTCPList.Items.Count -eq 0) { Show-Popup2 -Message "No data to export!" -Title "Warning:"; return }
+		$saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+		$saveFileDialog.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*"
+		$saveFileDialog.FileName = "TCP_Connections"
+		if ($saveFileDialog.ShowDialog() -eq "OK") {
+			$path = $saveFileDialog.FileName
+			try {
+				$textContent = "TCP CONNECTIONS`n`nDATE/TIME: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`nTOTAL CONNECTIONS: $($NetMonTCPList.Items.Count)`n`n--------------------------------------`n"
+				$textContent += $NetMonTCPList.Items | ForEach-Object { "Local Address: $($_.LocalAddress)`nLocal Port: $($_.LocalPort)`nRemote Address: $($_.RemoteAddress)`nRemote Port: $($_.RemotePort)`nProcess Name: $($_.ProcessName)`n--------------------------------------`n" }
+				[System.IO.File]::WriteAllText($path, $textContent)
+				Show-Popup2 -Message "Export to Text completed!" -Title "Export:"
+			} catch {
+				Show-Popup2 -Message "Error during export: $_" -Title "ERROR:"
+			}
+		}
+	})
 
 	# Bring window to foreground
 	$Main.Dispatcher.Invoke([action]{
@@ -1737,6 +2523,7 @@ $pCloseButton2.Add_MouseLeave({
 function Show-SubnetPopup {
 	$btnOK2.Visibility = 'Visible'
 	$PopupTitle2.Text = 'Segment Exploration'
+	$PopupText2.Visibility = 'Collapsed'
 	$SubnetInput.Visibility = 'Visible'
 	$ScanPanel.Visibility = 'Collapsed'
 	$ResultsList.Visibility = 'Collapsed'
