@@ -1403,7 +1403,9 @@ Add-Type -TypeDefinition $getIcons -ReferencedAssemblies System.Windows.Forms, S
 								</Canvas>
 							</Viewbox>
 						</Button>
-						<Button Name="btnMinimize" Content="—" Width="40" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource NoMouseOverButtonTemplate}"/>
+						<Button Name="btnMinimize" Width="40" Height="30" Background="Transparent" Foreground="Black" BorderThickness="0" Template="{StaticResource NoMouseOverButtonTemplate}">
+							<Path Width="15" Height="2" Stretch="Fill" Stroke="Black" StrokeThickness="1" Data="M0,0 L15,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+						</Button>
 						<Button Name="btnClose" Content="X" Width="40" Height="30" Background="Transparent" Foreground="Black" FontWeight="Bold" BorderThickness="0" Template="{StaticResource CloseButtonTemplate}"/>
 					</StackPanel>
 				</Grid>
