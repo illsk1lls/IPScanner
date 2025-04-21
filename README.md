@@ -1,7 +1,9 @@
 <h1 align="center">Simple IP Scanner - A Powershell Network Scanner</h1>
 
 <p align="center"><img src="https://github.com/illsk1lls/IPScanner/blob/main/.readme/IPScanner.png?raw=true"></p>
-<p align="center"> [![PowerShell Gallery](https://img.shields.io/powershellgallery/v/IPScanner.svg)](https://www.powershellgallery.com/packages/IPScanner) </p>
+<div style="text-align: center;">
+[![PowerShell Gallery](https://img.shields.io/powershellgallery/v/IPScanner.svg)](https://www.powershellgallery.com/packages/IPScanner)
+</div>
 <p align="center"><sup>This script will work as either a .CMD or .PS1 file.<br>
 (For ease of use it will be posted as a CMD file, as you can simply Double-Click it to launch)</sup></p><br>
 
