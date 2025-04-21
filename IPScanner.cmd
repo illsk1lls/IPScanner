@@ -2922,7 +2922,7 @@ $listView.Add_MouseDoubleClick({
 		$selectedItem = $listView.SelectedItems[0]
 		$pMAC.Text = "MAC: " + $selectedItem.MACaddress
 		$pVendor.Text = "Vendor: " + $selectedItem.Vendor
-		$global:pIP.Text = "IP: " + $selectedItem.IPaddress
+		$pIP.Text = "IP: " + $selectedItem.IPaddress
 		$pHost.Text = "Host: " + $selectedItem.HostName.Replace(' (This Device)','')
 		$PopupCanvas.SetValue([System.Windows.Controls.Canvas]::LeftProperty, [System.Windows.Controls.Canvas]::GetLeft($listView) + 10)
 		$PopupCanvas.SetValue([System.Windows.Controls.Canvas]::TopProperty, [System.Windows.Controls.Canvas]::GetTop($listView) + 10)
