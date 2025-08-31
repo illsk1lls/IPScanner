@@ -1,4 +1,4 @@
-<# :: Hybrid CMD / Powershell Launcher - Rename to CMD or .PS1 - CMD mode needs anything above this line removed to function properly
+<# :: Hybrid CMD / Powershell Launcher - Rename to .CMD or .PS1 - CMD mode needs anything above this line removed to function properly
 @ECHO OFF&START /MIN "" POWERSHELL -nop -c "iex ([io.file]::ReadAllText('%~f0'))">nul&EXIT
 #>
 
@@ -6,14 +6,12 @@
 Add-Type -MemberDefinition @"
 [DllImport("kernel32.dll")]
 public static extern IntPtr GetConsoleWindow();
-
 [DllImport("user32.dll")]
 public static extern bool ShowWindow(IntPtr handle, int nCmdShow);
 "@ -Name "Win32" -Namespace "Win32Functions"
-
 $hwnd = [Win32Functions.Win32]::GetConsoleWindow()
 if ($hwnd -ne [IntPtr]::Zero) {
-	[Win32Functions.Win32]::ShowWindow($hwnd, 0)  # Hide Legacy Console Window (GUI Only)
+	[void][Win32Functions.Win32]::ShowWindow($hwnd, 0)  # Hide Legacy Console Window (Show GUI Only) - This will hide completely for both .PS1 and .CMD
 } else {
 	$currentProcessId = $PID
 	$terminalProcess = $null
@@ -28,7 +26,7 @@ if ($hwnd -ne [IntPtr]::Zero) {
 	if ($terminalProcess) {
 		$hwnd = $terminalProcess.MainWindowHandle
 		if ($hwnd -ne [IntPtr]::Zero) {
-			[Win32Functions.Win32]::ShowWindow($hwnd, 0)  # Hide New Terminal (Show GUI Only)
+			[void][Win32Functions.Win32]::ShowWindow($hwnd, 0)  # Hide New Terminal (Show GUI Only) - When run as .PS1 this is only minimized. When run as .CMD this will hide completely.
 		}
 	}
 }
@@ -1994,6 +1992,7 @@ $titleBar.Text = "$AppId"
 
 # Window Closing
 $Main.Add_Closing({
+	Write-Host "Cleaning up/Closing threads...Please Wait"
 	if ($global:timer) {
 		try { $global:timer.Stop() } catch { Write-Host "Error stopping timer: $_" }
 	}
