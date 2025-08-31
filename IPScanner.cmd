@@ -2,7 +2,7 @@
 @ECHO OFF&START /MIN "" POWERSHELL -nop -c "iex ([io.file]::ReadAllText('%~f0'))">nul&EXIT
 #>
 
-# HideConsoleWindow - Show GUI only - Works for old and new terminals
+# HideConsoleWindow
 Add-Type -MemberDefinition @"
 [DllImport("kernel32.dll")]
 public static extern IntPtr GetConsoleWindow();
@@ -13,24 +13,24 @@ public static extern bool ShowWindow(IntPtr handle, int nCmdShow);
 
 $hwnd = [Win32Functions.Win32]::GetConsoleWindow()
 if ($hwnd -ne [IntPtr]::Zero) {
-    [Win32Functions.Win32]::ShowWindow($hwnd, 0)  # SW_HIDE
+	[Win32Functions.Win32]::ShowWindow($hwnd, 0)  # Hide Legacy Console Window (GUI Only)
 } else {
-    $currentProcessId = $PID
-    $terminalProcess = $null
-    while ($currentProcessId) {
-        $currentProcess = Get-Process -Id $currentProcessId -ErrorAction SilentlyContinue
-        if ($currentProcess.ProcessName -eq 'WindowsTerminal') {
-            $terminalProcess = $currentProcess
-            break
-        }
-        $currentProcessId = (Get-CimInstance Win32_Process -Filter "ProcessId = $currentProcessId" -ErrorAction SilentlyContinue).ParentProcessId
-    }
-    if ($terminalProcess) {
-        $hwnd = $terminalProcess.MainWindowHandle
-        if ($hwnd -ne [IntPtr]::Zero) {
-            [Win32Functions.Win32]::ShowWindow($hwnd, 0)  # SW_HIDE
-        }
-    }
+	$currentProcessId = $PID
+	$terminalProcess = $null
+	while ($currentProcessId) {
+		$currentProcess = Get-Process -Id $currentProcessId -ErrorAction SilentlyContinue
+		if ($currentProcess.ProcessName -eq 'WindowsTerminal') {
+			$terminalProcess = $currentProcess
+			break
+		}
+		$currentProcessId = (Get-CimInstance Win32_Process -Filter "ProcessId = $currentProcessId" -ErrorAction SilentlyContinue).ParentProcessId
+	}
+	if ($terminalProcess) {
+		$hwnd = $terminalProcess.MainWindowHandle
+		if ($hwnd -ne [IntPtr]::Zero) {
+			[Win32Functions.Win32]::ShowWindow($hwnd, 0)  # Hide New Terminal (Show GUI Only)
+		}
+	}
 }
 
 # Allow Single Instance Only
