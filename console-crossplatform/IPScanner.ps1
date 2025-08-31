@@ -18,8 +18,9 @@ function Get-HostInfo {
 	# Check Internet Connection and Get External IP
 	$ProgressPreference = 'SilentlyContinue'
 	$hotspotRedirectionTest = irm "http://www.msftncsi.com/ncsi.txt"
-	$global:externalIP = if ($hotspotRedirectionTest -eq "Microsoft NCSI") {
-		irm "http://ifconfig.me/ip"
+	if ($hotspotRedirectionTest -eq "Microsoft NCSI") {
+				$getIPv4Address = ([System.Net.Dns]::GetHostAddresses("ifconfig.me") | Where-Object { $_.AddressFamily -eq "InterNetwork" }).IPAddressToString
+				$global:externalIP = Invoke-RestMethod -Uri "http://$getIPv4Address/ip" -Headers @{ Host = "ifconfig.me" }
 	} else {
 		"No Internet or Redirection"
 	}
