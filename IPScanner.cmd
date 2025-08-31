@@ -98,12 +98,13 @@ function Get-HostInfo {
 		# Get Hostname
 		$hostName = [System.Net.Dns]::GetHostName()
 
-		# Check internet connection and get external IP
+		# Check internet connection and get external IPv4
 		$ProgressPreference = 'SilentlyContinue'
 		try {
 			$ncsiCheck = Invoke-RestMethod "http://www.msftncsi.com/ncsi.txt"
 			if ($ncsiCheck -eq "Microsoft NCSI") {
-				$externalIP = Invoke-RestMethod "http://ifconfig.me/ip"
+				$getIPv4Address = ([System.Net.Dns]::GetHostAddresses("ifconfig.me") | Where-Object { $_.AddressFamily -eq "InterNetwork" }).IPAddressToString
+				$externalIP = Invoke-RestMethod -Uri "http://$getIPv4Address/ip" -Headers @{ Host = "ifconfig.me" }
 			} else {
 				$externalIP = "No Internet or Redirection"
 			}
