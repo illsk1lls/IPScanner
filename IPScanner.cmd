@@ -287,94 +287,115 @@ function List-Machines {
 
 # Background Vendor Lookup
 function processVendors {
-	$runspace = [runspacefactory]::CreateRunspace()
-	$runspace.Open()
-	$vendorLookup = [powershell]::Create()
-	$vendorLookup.Runspace = $runspace
+	$vendorLookupThread = [powershell]::Create().AddScript({
+		param ($listView, $internalIP, $RunspacePool)
 
-	$lookupBlock = {
-		param ($listView, $internalIP)
+		$vendorItems = @()
 
-		$vendorJobs = @{}
-
-		# Process found devices
+		# Collect items needing vendor lookup
 		foreach ($item in $listView.Items) {
 			$ip = $item.IPaddress
 			$mac = $item.MACaddress
-			if ($ip -ne $internalIP) {
-				if($item.Vendor -eq 'Identifying...'){
-					$vendorJob = Start-Job -ScriptBlock {
-						param($mac)
-						$ProgressPreference = 'SilentlyContinue'
-						$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
-						$ProgressPreference = 'Continue'
-						if([string]::IsNullOrEmpty($response.Company)){
-							return $null
-						} else {
-							return $response
-						}
-					} -ArgumentList $mac
-					$vendorJobs[$ip] = $vendorJob
-					do {
-						# Limit maximum vendor tasks and process
-						foreach ($ipCheck in @($vendorJobs.Keys)) {
-							if ($vendorJobs[$ipCheck].State -eq "Completed") {
-								$result = Receive-Job -Job $vendorJobs[$ipCheck]
-								$vendorResult = if ($result -and $result.Company) {
-									$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
-								} else {
-									'Unable to Identify'
-								}
-								foreach ($it in $listView.Items) {
-									if ($it.IPaddress -eq $ipCheck) {
-										$it.Vendor = $vendorResult
-									}
-								}
-								$vendorJobs.Remove($ipCheck)
+			if ($ip -ne $internalIP -and $item.Vendor -eq 'Identifying...') {
+				$vendorItems += $item
+			}
+		}
+
+		# Resolve Vendor
+		$timeout = 3000
+		$lookupScript = {
+			param ($mac, $timeout)
+			$prefix = $mac.Replace(':','').Substring(0,6)
+			$url = "https://www.macvendorlookup.com/api/v2/$prefix"
+			try {
+				$ProgressPreference = 'SilentlyContinue'
+				$response = Invoke-WebRequest -Uri $url -TimeoutSec ($timeout / 1000) -Method Get -ErrorAction Stop
+				$ProgressPreference = 'Continue'
+				$json = $response.Content | ConvertFrom-Json
+				$vendor = if ($json -and $json.Company) {
+					$json.Company.substring(0, [System.Math]::Min(30, $json.Company.Length))
+				} else {
+					'Unable to Identify'
+				}
+			} catch {
+				$vendor = 'Unable to Identify'
+			}
+			return [PSCustomObject]@{MAC = $mac; Vendor = $vendor}
+		}
+
+		# Setup separate RunspacePool
+		$iss = [system.management.automation.runspaces.initialsessionstate]::CreateDefault()
+		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $iss, $Host)
+		$rsPool.ApartmentState = $RunspacePool.ApartmentState
+		$rsPool.Open()
+
+		# Start vendorJobs using ArrayList
+		$vendorJobs = New-Object System.Collections.ArrayList
+		foreach ($item in $vendorItems) {
+			$mac = $item.MACaddress
+			$vendorJob = [powershell]::Create().AddScript($lookupScript).AddArgument($mac).AddArgument($timeout)
+			$vendorJob.RunspacePool = $rsPool
+			$vendorJobHandle = $vendorJob.BeginInvoke()
+			$vendorJobs.Add([PSCustomObject]@{
+				Pipeline = $vendorJob
+				Handle = $vendorJobHandle
+				MAC = $mac
+			}) | Out-Null
+		}
+
+		# Process vendorJobs with safety timeout
+		$loopCount = 0
+		$maxLoops = 2000  # ~20s timeout
+		while ($vendorJobs.Count -gt 0 -and $loopCount -lt $maxLoops) {
+			for ($i = $vendorJobs.Count - 1; $i -ge 0; $i--) {
+				$vendorJob = $vendorJobs[$i]
+				if ($vendorJob.Handle.IsCompleted) {
+					try {
+						$result = $vendorJob.Pipeline.EndInvoke($vendorJob.Handle)
+						foreach ($it in $listView.Items) {
+							if ($it.MACaddress -eq $vendorJob.MAC) {
+								$it.Vendor = $result.Vendor
+								break
 							}
 						}
-						Start-Sleep -Milliseconds 50
-					} while ($vendorJobs.Count -ge 5)
+						$vendorJob.Pipeline.Dispose()
+						$vendorJobs.RemoveAt($i)
+					} catch {
+						# Force dispose on error
+						$vendorJob.Pipeline.Dispose()
+						$vendorJobs.RemoveAt($i)
+					}
+				}
+			}
+			Start-Sleep -Milliseconds 10
+			$loopCount++
+		}
+
+		if ($loopCount -ge $maxLoops) {
+			foreach ($job in $vendorJobs) {
+				try {
+					if (-not $job.Handle.IsCompleted) {
+						$job.Pipeline.Stop()
+					}
+					$job.Pipeline.Dispose()
+				} catch {}
+			}
+			$vendorJobs.Clear()
+			# Set defaults for any unresolved
+			foreach ($item in $listView.Items) {
+				if ($item.Vendor -eq 'Identifying...') {
+					$item.Vendor = 'Unable to Identify'
 				}
 			}
 		}
 
-		# Process remaining tasks
-		while ($vendorJobs.Count -ge 1) {
-			# Process vendor tasks
-			foreach ($ipCheck in @($vendorJobs.Keys)) {
-				if ($vendorJobs[$ipCheck].State -eq "Completed") {
-					$result = Receive-Job -Job $vendorJobs[$ipCheck]
-					$vendorResult = if ($result -and $result.Company) {
-						$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
-					} else {
-						'Unable to Identify'
-					}
-					foreach ($it in $listView.Items) {
-						if ($it.IPaddress -eq $ipCheck) {
-							$it.Vendor = $vendorResult
-						}
-					}
-					$vendorJobs.Remove($ipCheck)
-				}
-			}
-			Start-Sleep -Milliseconds 50
-		}
+		# Cleanup
+		$rsPool.Close()
+		$rsPool.Dispose()
 
-		# Clean up jobs
-		Remove-Job -Job $vendorJobs.Values -Force
-	}
-
-	# Script block params
-	$null = $vendorLookup.AddScript($lookupBlock).AddArgument($listView).AddArgument($internalIP)
-
-	$asyncResult = $vendorLookup.BeginInvoke()
-
-	# Cleanup
-	$vendorLookup.EndInvoke($asyncResult)
-	$vendorLookup.Dispose()
-	$runspace.Close()
-	$runspace.Dispose()
+	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($RunspacePool)
+	$vendorLookupThread.RunspacePool = $RunspacePool
+	$vendorScan = $vendorLookupThread.BeginInvoke()
 }
 
 # Background Hostname Lookup
@@ -394,43 +415,43 @@ function processHostnames {
 			}
 		}
 
-		# Hostname resolution with timeout
+		# Resolve Hostname, more time required for reliable altrernate subnet responses
 		$timeout = if ($gatewayPrefix -ne $originalGatewayPrefix) { 4500 } else { 3000 }
 		$resolveScript = {
 			param ($ip, $timeout)
-			$dnsTask = [System.Net.Dns]::GetHostEntryAsync($ip)
-			$timeoutTask = [System.Threading.Tasks.Task]::Delay($timeout)
-
-			$task = [System.Threading.Tasks.Task]::WhenAny($dnsTask, $timeoutTask)
-			$task.Wait()
-			$result = $task.Result
-
-			if ($result -eq $dnsTask -and $dnsTask.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion) {
-				return [PSCustomObject]@{IP = $ip; HostName = $dnsTask.Result.HostName}
-			} else {
-				return [PSCustomObject]@{IP = $ip; HostName = "Unable to Resolve"}
+			try {
+				$dnsTask = [System.Net.Dns]::GetHostEntryAsync($ip)
+				$timeoutTask = [System.Threading.Tasks.Task]::Delay($timeout)
+				$completedTask = [System.Threading.Tasks.Task]::WhenAny($dnsTask, $timeoutTask).Result
+				if ($completedTask -eq $dnsTask -and $dnsTask.Status -eq [System.Threading.Tasks.TaskStatus]::RanToCompletion) {
+					$hostName = $dnsTask.Result.HostName
+				} else {
+					$hostName = "Unable to Resolve"
+				}
+			} catch {
+				$hostName = "Unable to Resolve"
 			}
+			return [PSCustomObject]@{IP = $ip; HostName = $hostName}
 		}
 
 		# Setup separate RunspacePool
 		$iss = [system.management.automation.runspaces.initialsessionstate]::CreateDefault()
-		$rsHost = [runspacefactory]::CreateRunspace($iss)
-		$rsHost.Open()
-		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $rsHost, $RunspacePool.ApartmentState)
+		$rsPool = [runspacefactory]::CreateRunspacePool(1, 10, $iss, $Host)
+		$rsPool.ApartmentState = $RunspacePool.ApartmentState
 		$rsPool.Open()
 
-		# Start hostNameJobs - responses first
-		$hostNameJobs = @()
+		# Start hostNameJobs using ArrayList - responses first
+		$hostNameJobs = New-Object System.Collections.ArrayList
 		foreach ($item in $pingItems) {
 			if($item.Hostname -eq 'Resolving...'){
 				$hostNameJob = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress).AddArgument($timeout)
 				$hostNameJob.RunspacePool = $rsPool
 				$hostNameJobHandle = $hostNameJob.BeginInvoke()
-				$hostNameJobs += [PSCustomObject]@{
+				$hostNameJobs.Add([PSCustomObject]@{
 					Pipeline = $hostNameJob
 					Handle = $hostNameJobHandle
 					IP = $item.IPaddress
-				}
+				}) | Out-Null
 			}
 		}
 		foreach ($item in $nonPingItems) {
@@ -438,38 +459,63 @@ function processHostnames {
 				$hostNameJob = [powershell]::Create().AddScript($resolveScript).AddArgument($item.IPaddress).AddArgument($timeout)
 				$hostNameJob.RunspacePool = $rsPool
 				$hostNameJobHandle = $hostNameJob.BeginInvoke()
-				$hostNameJobs += [PSCustomObject]@{
+				$hostNameJobs.Add([PSCustomObject]@{
 					Pipeline = $hostNameJob
 					Handle = $hostNameJobHandle
 					IP = $item.IPaddress
-				}
+				}) | Out-Null
 			}
 		}
 
-		# Process hostNameJobs
-		while ($hostNameJobs.Count -gt 0) {
+		# Process hostNameJobs with safety timeout
+		$loopCount = 0
+		$maxLoops = 2000  # ~20s timeout
+		while ($hostNameJobs.Count -gt 0 -and $loopCount -lt $maxLoops) {
 			for ($i = $hostNameJobs.Count - 1; $i -ge 0; $i--) {
 				$hostNameJob = $hostNameJobs[$i]
 				if ($hostNameJob.Handle.IsCompleted) {
-					$result = $hostNameJob.Pipeline.EndInvoke($hostNameJob.Handle)
-					foreach ($it in $listView.Items) {
-						if ($it.IPaddress -eq $hostNameJob.IP) {
-							$it.HostName = $result.HostName
-							break
+					try {
+						$result = $hostNameJob.Pipeline.EndInvoke($hostNameJob.Handle)
+						foreach ($it in $listView.Items) {
+							if ($it.IPaddress -eq $hostNameJob.IP) {
+								$it.HostName = $result.HostName
+								break
+							}
 						}
+						$hostNameJob.Pipeline.Dispose()
+						$hostNameJobs.RemoveAt($i)
+					} catch {
+						# Force dispose on error
+						$hostNameJob.Pipeline.Dispose()
+						$hostNameJobs.RemoveAt($i)
 					}
-					$hostNameJob.Pipeline.Dispose()
-					$hostNameJobs.RemoveAt($i)
 				}
 			}
 			Start-Sleep -Milliseconds 10
+			$loopCount++
+		}
+
+		if ($loopCount -ge $maxLoops) {
+			foreach ($job in $hostNameJobs) {
+				try {
+					if (-not $job.Handle.IsCompleted) {
+						$job.Pipeline.Stop()
+					}
+					$job.Pipeline.Dispose()
+				} catch {}
+			}
+			$hostNameJobs.Clear()
+			# Set defaults for any unresolved
+			foreach ($item in $listView.Items) {
+				if ($item.HostName -eq 'Resolving...') {
+					$item.HostName = 'Unable to Resolve'
+				}
+			}
 		}
 
 		# Cleanup
 		$rsPool.Close()
 		$rsPool.Dispose()
-		$rsHost.Close()
-		$rsHost.Dispose()
 
 	}, $true).AddArgument($listView).AddArgument($internalIP).AddArgument($RunspacePool).AddArgument($global:gatewayPrefix).AddArgument($originalGatewayPrefix)
 	$hostnameLookupThread.RunspacePool = $RunspacePool
@@ -716,7 +762,7 @@ function Start-NetMonBackgroundTask {
 				$connections = Get-NetTCPConnection | Where-Object { $_.State -eq "Established" }
 				$tcpList = @()
 				foreach ($conn in $connections) {
-					$process = Get-CimInstance Win32_Process -Filter "ProcessId = $($conn.OwningProcess)" -ErrorAction SilentlyContinue
+					$process = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
 					$processName = if ($process) { $process.Name } else { "Unknown" }
 					$tcpList += [PSCustomObject]@{
 						LocalAddress = $conn.LocalAddress; LocalPort = $conn.LocalPort; RemoteAddress = $conn.RemoteAddress; RemotePort = $conn.RemotePort; ProcessName = $processName
@@ -739,6 +785,11 @@ function Start-NetMonBackgroundTask {
 			} catch {
 				Write-Host "Background task error: $_"
 				$global:syncHash.Error = $_.ToString()
+			}
+			$global:iterationCount = if ($null -eq $global:iterationCount) { 0 } else { $global:iterationCount + 1 }
+			if ($global:iterationCount % 10 -eq 0) {
+				[System.GC]::Collect()
+				[System.GC]::WaitForPendingFinalizers()
 			}
 			Start-Sleep -Milliseconds 1000
 		}
@@ -3027,21 +3078,20 @@ $Main.Add_KeyUp({
 	}
 })
 
-# Wait for background jobs to finish with progress tracking
 function TrackProgress {
 	$totalItems = $listView.Items.Count
 	$completedItems = 0
 	# Initialize to a value that will always differ from $completedItems on first check
 	$previousCompletedItems = -1
+	$lastChangeTime = Get-Date
+	$noChangeTimeoutSeconds = 5
 
 	do {
-		# Count items with both HostName and Vendor resolved
 		$completedItems = ($listView.Items | Where-Object {
 			$_.HostName -ne "Resolving..." -and
 			$_.Vendor -ne "Identifying..."
 		}).Count
 
-		# Check if the number of completed items has changed
 		if ($completedItems -ne $previousCompletedItems) {
 			# Update UI with the new progress
 			$completedPercentage = if ($totalItems -gt 0) {
@@ -3051,20 +3101,33 @@ function TrackProgress {
 			}
 			Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
 
-			# Refresh ListView to show changes
 			$listView.Items.Refresh()
 			Update-uiMain
 
-			# Update the previous count for the next iteration
+			$lastChangeTime = Get-Date
 			$previousCompletedItems = $completedItems
 		} else {
-			# If no change, update the UI occasionally to show that the process is ongoing
 			if ($completedItems -lt $totalItems) {
 				Update-Progress ([math]::Min(100, $completedPercentage)) 'Identifying Devices'
 			}
 		}
 
-		# Short sleep to not overload the system
+		$elapsedSinceChange = ((Get-Date) - $lastChangeTime).TotalSeconds
+		if ($elapsedSinceChange -gt $noChangeTimeoutSeconds) {
+			# Force-set any remaining unresolved items
+			foreach ($item in $listView.Items) {
+				if ($item.Vendor -eq "Identifying...") {
+					$item.Vendor = "Unable to Identify"
+				}
+				if ($item.HostName -eq "Resolving...") {
+					$item.HostName = "Unable to Resolve"
+				}
+			}
+			$listView.Items.Refresh()
+			Update-uiMain
+			break
+		}
+
 		Start-Sleep -Milliseconds 5
 	} while ($completedItems -lt $totalItems)
 }
