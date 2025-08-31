@@ -1,41 +1,37 @@
-<# :: Hybrid CMD / Powershell Launcher - Rename file to .CMD to Autolaunch with console settings (Double-Click) - Rename to .PS1 to run as Powershell script without console settings
-@ECHO OFF
-SET "0=%~f0"&SET "LEGACY={B23D10C0-E52E-411E-9D5B-C09FDF709C7D}"&SET "LETWIN={00000000-0000-0000-0000-000000000000}"&SET "TERMINAL={2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}"&SET "TERMINAL2={E12CFF52-A866-4C77-9A90-F570A7AA2C6B}"
-POWERSHELL -nop -c "Get-WmiObject -Class Win32_OperatingSystem | Select -ExpandProperty Caption | Find 'Windows 11'">nul
-IF ERRORLEVEL 0 (
-	SET isEleven=1
-	>nul 2>&1 REG QUERY "HKCU\Console\%%%%Startup" /v DelegationConsole
-	IF ERRORLEVEL 1 (
-		REG ADD "HKCU\Console\%%%%Startup" /v DelegationConsole /t REG_SZ /d "%LETWIN%" /f>nul
-		REG ADD "HKCU\Console\%%%%Startup" /v DelegationTerminal /t REG_SZ /d "%LETWIN%" /f>nul
-	)
-	FOR /F "usebackq tokens=3" %%# IN (`REG QUERY "HKCU\Console\%%%%Startup" /v DelegationConsole 2^>nul`) DO (
-		IF NOT "%%#"=="%LEGACY%" (
-			SET "DEFAULTCONSOLE=%%#"
-			REG ADD "HKCU\Console\%%%%Startup" /v DelegationConsole /t REG_SZ /d "%LEGACY%" /f>nul
-			REG ADD "HKCU\Console\%%%%Startup" /v DelegationTerminal /t REG_SZ /d "%LEGACY%" /f>nul
-		)
-	)
-)
-START /MIN "" POWERSHELL -nop -c "iex ([io.file]::ReadAllText('%~f0'))">nul
-IF "%isEleven%"=="1" (
-	IF DEFINED DEFAULTCONSOLE (
-		IF "%DEFAULTCONSOLE%"=="%TERMINAL%" (
-			REG ADD "HKCU\Console\%%%%Startup" /v DelegationConsole /t REG_SZ /d "%TERMINAL%" /f>nul
-			REG ADD "HKCU\Console\%%%%Startup" /v DelegationTerminal /t REG_SZ /d "%TERMINAL2%" /f>nul
-		) ELSE (
-			REG ADD "HKCU\Console\%%%%Startup" /v DelegationConsole /t REG_SZ /d "%DEFAULTCONSOLE%" /f>nul
-			REG ADD "HKCU\Console\%%%%Startup" /v DelegationTerminal /t REG_SZ /d "%DEFAULTCONSOLE%" /f>nul
-		)
-	)
-)
-EXIT
-#>if($env:0){$PSCommandPath="$env:0"}
-###POWERSHELL BELOW THIS LINE###
+<# :: Hybrid CMD / Powershell Launcher - Rename to CMD or .PS1 - CMD mode needs anything above this line removed to function properly
+@ECHO OFF&START /MIN "" POWERSHELL -nop -c "iex ([io.file]::ReadAllText('%~f0'))">nul&EXIT
+#>
 
-# Hide Console - Show GUI Only - Only works for Legacy console
-Add-Type -MemberDefinition '[DllImport("User32.dll")]public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Namespace Win32 -Name Functions
-$closeConsoleUseGUI=[Win32.Functions]::ShowWindow((Get-Process -Id $PID).MainWindowHandle,0)
+# HideConsoleWindow - Show GUI only - Works for old and new terminals
+Add-Type -MemberDefinition @"
+[DllImport("kernel32.dll")]
+public static extern IntPtr GetConsoleWindow();
+
+[DllImport("user32.dll")]
+public static extern bool ShowWindow(IntPtr handle, int nCmdShow);
+"@ -Name "Win32" -Namespace "Win32Functions"
+
+$hwnd = [Win32Functions.Win32]::GetConsoleWindow()
+if ($hwnd -ne [IntPtr]::Zero) {
+    [Win32Functions.Win32]::ShowWindow($hwnd, 0)  # SW_HIDE
+} else {
+    $currentProcessId = $PID
+    $terminalProcess = $null
+    while ($currentProcessId) {
+        $currentProcess = Get-Process -Id $currentProcessId -ErrorAction SilentlyContinue
+        if ($currentProcess.ProcessName -eq 'WindowsTerminal') {
+            $terminalProcess = $currentProcess
+            break
+        }
+        $currentProcessId = (Get-CimInstance Win32_Process -Filter "ProcessId = $currentProcessId" -ErrorAction SilentlyContinue).ParentProcessId
+    }
+    if ($terminalProcess) {
+        $hwnd = $terminalProcess.MainWindowHandle
+        if ($hwnd -ne [IntPtr]::Zero) {
+            [Win32Functions.Win32]::ShowWindow($hwnd, 0)  # SW_HIDE
+        }
+    }
+}
 
 # Allow Single Instance Only
 $AppId = 'Simple IP Scanner'

@@ -78,7 +78,7 @@ PING -n 1 "ifconfig.me" | findstr /r /c:"[0-9] *ms">nul
 IF NOT !errorlevel! == 0 (
 	SET "EXT=No Internet Detected"
 ) ELSE (
-	FOR /f "usebackq" %%# IN (`curl -s ifconfig.me`) DO (SET EXT=%%#)
+	FOR /f "usebackq" %%# IN (`curl -4 ifconfig.me`) DO (SET EXT=%%#)
 )
 CALL :GETIP ISHOST&IF NOT DEFINED ISHOST SET "ISHOST=Unknown"
 CALL :GETADAPTER ADAPTER&IF NOT DEFINED ADAPTER SET "ADAPTER=Unknown"
