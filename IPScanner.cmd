@@ -107,27 +107,102 @@ function Get-HostInfo {
 		}
 		$ProgressPreference = 'Continue'
 
-		# Use the passed gateway and gatewayPrefix
-		$internalIP = (Get-NetIPAddress | Where-Object {
-			$_.AddressFamily -eq 'IPv4' -and
-			$_.InterfaceAlias -ne 'Loopback Pseudo-Interface 1' -and
-			$_.IPAddress -like "$originalGatewayPrefix*"
-		}).IPAddress
+		# Get the interface used for the default IPv4 route
+		$route = Get-NetRoute -DestinationPrefix 0.0.0.0/0 |
+			Where-Object { $_.NextHop -match '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' } |
+			Select-Object -First 1
 
-		# Get current adapter
-		$adapter = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
-			$_.InterfaceAlias -match 'Ethernet|Wi-Fi' -and
-			$_.IPAddress -like "$originalGatewayPrefix*"
-		}).InterfaceAlias
+		if (-not $route) {
+			# Fallback to any IPv4 route if no default gateway found
+			$route = Get-NetRoute -AddressFamily IPv4 | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' } | Select-Object -First 1
+		}
 
-		# Get MAC address
-		$myMac = (Get-NetAdapter -Name $adapter).MacAddress -replace '-', ':'
+		$global:gateway = if ($route) { $route.NextHop } else { 'Unknown' }
+		$interfaceIndex = if ($route) { $route.InterfaceIndex } else { $null }
+
+		$global:internalIP = 'Unknown'
+		$global:adapter = 'Unknown'
+		$global:myMac = 'Unknown'
+
+		if ($interfaceIndex) {
+			# Get primary IPv4 address on this interface (exclude link-local and loopback)
+			$ipObj = Get-NetIPAddress -InterfaceIndex $interfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+				Where-Object {
+					$_.IPAddress -notlike '127.*' -and
+					$_.IPAddress -notlike '169.254.*'
+				} | Select-Object -First 1
+
+			if ($ipObj) {
+				$global:internalIP = $ipObj.IPAddress
+			}
+
+			# Get adapter name and MAC
+			$adapterObj = Get-NetAdapter -InterfaceIndex $interfaceIndex -ErrorAction SilentlyContinue
+			if ($adapterObj) {
+				$global:adapter = $adapterObj.Name
+				if ($adapterObj.MacAddress) {
+					$global:myMac = $adapterObj.MacAddress -replace '-', ':'
+				}
+			}
+		}
+
+		# Acquire subnet details for accurate ARP filtering and scanning, fallback to /24 with gatewayPrefix if needed
+		$global:subnetCIDR = 'Unknown'
+		$global:networkAddress = 'Unknown'
+		$global:broadcastAddress = 'Unknown'
+		$global:scanRange = 1..254 | ForEach-Object { "$gatewayPrefix$_" }
+
+		if ($interfaceIndex -and $global:internalIP -ne 'Unknown') {
+			$prefixLength = (Get-NetIPInterface -InterfaceIndex $interfaceIndex -AddressFamily IPv4).PrefixLength
+			if ($prefixLength) {
+				$global:subnetCIDR = "/$prefixLength"
+
+				# Calculate network/broadcast
+				function Get-SubnetRange {
+					param($ip, $prefix)
+					$ipBytes = [System.Net.IPAddress]::Parse($ip).GetAddressBytes()
+					$mask = [uint32]([Math]::Pow(2, $prefix) - 1) -shl (32 - $prefix)
+					$networkBytes = [byte[]](0..3)
+					for ($i = 0; $i -lt 4; $i++) {
+						$networkBytes[$i] = $ipBytes[$i] -band [byte](($mask -shr (24 - $i * 8)) -band 0xFF)
+					}
+					$network = [System.Net.IPAddress]::new($networkBytes).ToString()
+
+					$broadcastBytes = [byte[]](0..3)
+					for ($i = 0; $i -lt 4; $i++) {
+						$broadcastBytes[$i] = $networkBytes[$i] -bor [byte](~[byte](($mask -shr (24 - $i * 8)) -band 0xFF))
+					}
+					$broadcast = [System.Net.IPAddress]::new($broadcastBytes).ToString()
+
+					return $network, $broadcast
+				}
+
+				$global:networkAddress, $global:broadcastAddress = Get-SubnetRange $global:internalIP $prefixLength
+
+				# Calculate scannable IPs - exclude network/broadcast/self/gateway, cap at ~ /22 (1022 hosts), if exceeded switch over to /24 for performance - this will eventually be raised/removed when multi-threading management is improved
+				$netInt = [System.BitConverter]::ToUInt32([System.Net.IPAddress]::Parse($global:networkAddress).GetAddressBytes(), 0)
+				$broadInt = [System.BitConverter]::ToUInt32([System.Net.IPAddress]::Parse($global:broadcastAddress).GetAddressBytes(), 0)
+				$totalHosts = $broadInt - $netInt - 1
+				if ($totalHosts -gt 1022) {
+					$selfPrefix = ($global:internalIP -split '\.')[0..2] -join '.'
+					$global:scanRange = 1..254 | ForEach-Object { "$selfPrefix.$_" }
+					$global:largeSubnetWarning = $true
+				} else {
+					$global:scanRange = (1..$totalHosts) | ForEach-Object {
+						$ipInt = $netInt + $_
+						$ipBytes = [System.BitConverter]::GetBytes($ipInt)
+						[Array]::Reverse($ipBytes)
+						[System.Net.IPAddress]::new($ipBytes).ToString()
+					}
+				}
+			}
+		}
 
 		# Get domain
 		$domain = (Get-CimInstance -ClassName Win32_ComputerSystem).Domain
 
 		# Init ARP cache data
-		$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and ($_.IPAddress -like "$gatewayPrefix*") -and -not $_.IPAddress.Contains(':')} | Select-Object -Property IPAddress, LinkLayerAddress
+		$arpInit = Get-NetNeighbor | Where-Object {($_.State -eq "Reachable" -or $_.State -eq "Stale") -and -not $_.IPAddress.Contains(':') -and $_.InterfaceIndex -eq $interfaceIndex} | Select-Object -Property IPAddress, LinkLayerAddress
 
 		# Mark empty as unknown
 		$variables = @('hostName', 'externalIP', 'internalIP', 'gateway', 'domain')
@@ -147,6 +222,9 @@ function Get-HostInfo {
 			'myMac' = $myMac;
 			'domain' = $domain;
 			'arpInit' = $arpInit;
+			'subnetCIDR' = $global:subnetCIDR;
+			'scanRange' = $global:scanRange;
+			'largeSubnetWarning' = $global:largeSubnetWarning;
 		}
 	}
 
@@ -167,29 +245,34 @@ function Get-HostInfo {
 	$global:myMac = $hostInfoResults.myMac
 	$global:domain = $hostInfoResults.domain
 	$global:arpInit = $hostInfoResults.arpInit
+	$global:subnetCIDR = $hostInfoResults.subnetCIDR
+	$global:scanRange = $hostInfoResults.scanRange
+	$global:largeSubnetWarning = $hostInfoResults.largeSubnetWarning
 	Update-Progress 0 'Scanning'
 	$getHostInfoThread.Dispose()
 }
 
-# Send packets across subnet (progress values adjusted for proper display)
+# Send packets across subnet
 function Scan-Subnet {
-		$progressCounter = 0
+	$progressCounter = 0
+	$totalToScan = $global:scanRange.Count
 
-		1..254 | ForEach-Object {
-			$progressCounter++
-			$percentComplete = [math]::Min([math]::Round(($progressCounter / 240) * 100), 100)
-			Test-Connection -ComputerName "$global:gatewayPrefix$_" -Count 1 -AsJob | Out-Null
-			if($percentComplete -ge 100){
-				Update-Progress -value $percentComplete -text "Listening"
-			} else {
-				Update-Progress -value $percentComplete -text "Sending Packets"
-			}
+	$global:scanRange | ForEach-Object {
+		$progressCounter++
+		$percentComplete = [math]::Min([math]::Round(($progressCounter / $totalToScan) * 100), 100)
+		$targetIP = $_
+		Test-Connection -ComputerName $targetIP -Count 1 -AsJob | Out-Null
+		if ($percentComplete -ge 100) {
+			Update-Progress -value 100 -text "Listening"
+		} else {
+			Update-Progress -value $percentComplete -text "Sending Packets"
 		}
-		Update-Progress -value 100 -text "Listening"
-		Get-Job | Wait-Job -ErrorAction Stop | Out-Null
-		$results = Get-Job | Receive-Job -ErrorAction Stop
-		$global:successfulPings = @($results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address)
-		Get-Job | Remove-Job -Force
+	}
+	Update-Progress -value 100 -text "Listening"
+	Get-Job | Wait-Job -ErrorAction Stop | Out-Null
+	$results = Get-Job | Receive-Job -ErrorAction Stop
+	$global:successfulPings = @($results | Where-Object { $_.StatusCode -eq 0 } | Select-Object -ExpandProperty Address)
+	Get-Job | Remove-Job -Force
 }
 
 # Create peer list
@@ -3197,6 +3280,10 @@ $Scan.Add_Click({
 		$hostNameColumn.Width = 284
 		Update-uiMain
 		Get-HostInfo -gateway $global:gateway -gatewayPrefix $global:gatewayPrefix -originalGatewayPrefix $originalGatewayPrefix
+		if ($global:largeSubnetWarning) {
+			Show-Popup2 -Message "Large subnet detected; scanning limited to your /24 for performance." -Title 'Info:'
+			$global:largeSubnetWarning = $false
+		}
 		$externalIPt.Text = "`- `[ External IP: $externalIP `]"
 		$domainName.Text = "`- `[ Domain: $domain `]"
 		Update-uiMain
