@@ -292,13 +292,11 @@ function List-Machines {
 	# Cycle through ARP table to populate initial ListView data and start async lookups
 	$totalItems = ($arpOutput.Count - 1)
 
-	# First, add all known ARP entries and hostnames
+	# First, add all known ARP entries
 	foreach ($line in $arpOutput) {
 		$ip = $line.IPAddress
 		$mac = $line.LinkLayerAddress.Replace('-',':')
-		$quickNameLookup = ((Resolve-DnsName -Name $ip -DnsOnly -ErrorAction SilentlyContinue).NameHost)
-		if(-not $quickNameLookup){$quickNameLookup = 'Resolving...'}
-		$name = if ($ip -eq $internalIP) {"$hostName (This Device)"} else {"$quickNameLookup"}
+		$name = if ($ip -eq $internalIP) {"$hostName (This Device)"} else {'Resolving...'}
 		$vendor = if ($ip -eq $internalIP) {$myVendor} else {'Identifying...'}
 
 		# Determine if the IP was pingable
@@ -337,7 +335,7 @@ function List-Machines {
 		} else {
 			$item = [pscustomobject]@{
 				'MACaddress' = $mac;
-				'Vendor' = $vendor;
+				'Vendor' = 'Identifying...';
 				'IPaddress' = $ip;
 				'HostName' = 'Resolving...';
 				'Ping' = $true;
@@ -363,94 +361,87 @@ function List-Machines {
 
 # Background Vendor Lookup
 function processVendors {
-	$runspace = [runspacefactory]::CreateRunspace()
-	$runspace.Open()
-	$vendorLookup = [powershell]::Create()
-	$vendorLookup.Runspace = $runspace
-
-	$lookupBlock = {
+	$vendorLookupThread = [powershell]::Create().AddScript({
 		param ($listView, $internalIP)
 
-		$vendorJobs = @{}
-
-		# Process found devices
+		$targets = [System.Collections.Generic.List[object]]::new()
 		foreach ($item in $listView.Items) {
-			$ip = $item.IPaddress
-			$mac = $item.MACaddress
-			if ($ip -ne $internalIP) {
-				if($item.Vendor -eq 'Identifying...'){
-					$vendorJob = Start-Job -ScriptBlock {
-						param($mac)
-						$ProgressPreference = 'SilentlyContinue'
-						$response = (irm "https://www.macvendorlookup.com/api/v2/$($mac.Replace(':','').Substring(0,6))" -Method Get)
-						$ProgressPreference = 'Continue'
-						if([string]::IsNullOrEmpty($response.Company)){
-							return $null
-						} else {
-							return $response
-						}
-					} -ArgumentList $mac
-					$vendorJobs[$ip] = $vendorJob
-					do {
-						# Limit maximum vendor tasks and process
-						foreach ($ipCheck in @($vendorJobs.Keys)) {
-							if ($vendorJobs[$ipCheck].State -eq "Completed") {
-								$result = Receive-Job -Job $vendorJobs[$ipCheck]
-								$vendorResult = if ($result -and $result.Company) {
-									$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
-								} else {
-									'Unable to Identify'
-								}
-								foreach ($it in $listView.Items) {
-									if ($it.IPaddress -eq $ipCheck) {
-										$it.Vendor = $vendorResult
-									}
-								}
-								$vendorJobs.Remove($ipCheck)
-							}
-						}
-						Start-Sleep -Milliseconds 50
-					} while ($vendorJobs.Count -ge 5)
+			if ($item.IPaddress -ne $internalIP -and $item.Vendor -eq 'Identifying...') {
+				$mac = $item.MACaddress
+				# Skip unusable MACs immediately (no network wait)
+				if ([string]::IsNullOrEmpty($mac) -or $mac -eq 'Unknown' -or $mac -eq 'Unreachable') {
+					$item.Vendor = 'Unable to Identify'
+					continue
 				}
+				$macHex = ($mac -replace '[:\-\.]', '')
+				if ($macHex.Length -lt 6) {
+					$item.Vendor = 'Unable to Identify'
+					continue
+				}
+				$targets.Add([PSCustomObject]@{ IP = $item.IPaddress; OUI = $macHex.Substring(0, 6) })
 			}
 		}
 
-		# Process remaining tasks
-		while ($vendorJobs.Count -ge 1) {
-			# Process vendor tasks
-			foreach ($ipCheck in @($vendorJobs.Keys)) {
-				if ($vendorJobs[$ipCheck].State -eq "Completed") {
-					$result = Receive-Job -Job $vendorJobs[$ipCheck]
-					$vendorResult = if ($result -and $result.Company) {
-						$result.Company.substring(0, [System.Math]::Min(30, $result.Company.Length))
-					} else {
-						'Unable to Identify'
+		if ($targets.Count -eq 0) { return }
+
+		$resolveScript = {
+			param ($ip, $oui)
+			$ProgressPreference = 'SilentlyContinue'
+			try {
+				$response = Invoke-RestMethod "https://www.macvendorlookup.com/api/v2/$oui" -Method Get
+				if ($response -and -not [string]::IsNullOrEmpty($response.Company)) {
+					return [PSCustomObject]@{
+						IP = $ip
+						Vendor = $response.Company.Substring(0, [System.Math]::Min(30, $response.Company.Length))
 					}
+				}
+			} catch { }
+			return [PSCustomObject]@{ IP = $ip; Vendor = 'Unable to Identify' }
+		}
+
+		$iss = [system.management.automation.runspaces.initialsessionstate]::CreateDefault()
+		$rsHost = [runspacefactory]::CreateRunspace($iss)
+		$rsHost.Open()
+		$rsPool = [runspacefactory]::CreateRunspacePool(1, 8, $rsHost, $null)
+		$rsPool.Open()
+
+		$vendorJobs = [System.Collections.Generic.List[object]]::new()
+		foreach ($t in $targets) {
+			$job = [powershell]::Create().AddScript($resolveScript).AddArgument($t.IP).AddArgument($t.OUI)
+			$job.RunspacePool = $rsPool
+			$vendorJobs.Add([PSCustomObject]@{
+				Pipeline = $job
+				Handle = $job.BeginInvoke()
+				IP = $t.IP
+			})
+		}
+
+		while ($vendorJobs.Count -gt 0) {
+			for ($i = $vendorJobs.Count - 1; $i -ge 0; $i--) {
+				$vJob = $vendorJobs[$i]
+				if ($vJob.Handle.IsCompleted) {
+					$result = $vJob.Pipeline.EndInvoke($vJob.Handle)
+					$vendorResult = if ($result -and $result[0].Vendor) { $result[0].Vendor } else { 'Unable to Identify' }
 					foreach ($it in $listView.Items) {
-						if ($it.IPaddress -eq $ipCheck) {
+						if ($it.IPaddress -eq $vJob.IP) {
 							$it.Vendor = $vendorResult
+							break
 						}
 					}
-					$vendorJobs.Remove($ipCheck)
+					$vJob.Pipeline.Dispose()
+					$vendorJobs.RemoveAt($i)
 				}
 			}
-			Start-Sleep -Milliseconds 50
+			Start-Sleep -Milliseconds 10
 		}
 
-		# Clean up jobs
-		Remove-Job -Job $vendorJobs.Values -Force
-	}
-
-	# Script block params
-	$null = $vendorLookup.AddScript($lookupBlock).AddArgument($listView).AddArgument($internalIP)
-
-	$asyncResult = $vendorLookup.BeginInvoke()
-
-	# Cleanup
-	$vendorLookup.EndInvoke($asyncResult)
-	$vendorLookup.Dispose()
-	$runspace.Close()
-	$runspace.Dispose()
+		$rsPool.Close()
+		$rsPool.Dispose()
+		$rsHost.Close()
+		$rsHost.Dispose()
+	}, $true).AddArgument($listView).AddArgument($internalIP)
+	$vendorLookupThread.RunspacePool = $RunspacePool
+	$script:vendorScan = $vendorLookupThread.BeginInvoke()
 }
 
 # Background Hostname Lookup
